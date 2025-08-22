@@ -93,66 +93,25 @@ pip install openpyxl
 pip install watchdog
 ```
 
-### Скрипт `tools/make_cmm.py`
-```python
-import re
-from pathlib import Path
-from datetime import datetime
-from openpyxl import load_workbook
-from openpyxl.workbook.defined_name import DefinedName
-
-TEMPLATE_PATH = Path("C:/Data/Templates/CommentSheet_Template.xltx")  # или .xlsx
-SEARCH_DIR = Path("C:/Data/Reports")                                  # папка с .docx
-DATE_FMT = "yyyy-mm-dd"
-
-RE_SECTION = re.compile(r"(GMS\d+)", re.IGNORECASE)
-RE_I_CODE  = re.compile(r"(I\.\d+\.\d+)", re.IGNORECASE)
-
-def set_named_or_cell(wb, name, fallback_addr, value, number_format=None):
-    dn_map = {dn.name: dn for dn in wb.defined_names.definedName}
-    if name in dn_map:
-        for sheet_name, coord in dn_map[name].destinations:
-            cell = wb[sheet_name][coord]
-            cell.value = value
-            if number_format: cell.number_format = number_format
-    else:
-        ws = wb.active
-        cell = ws[fallback_addr]
-        cell.value = value
-        if number_format: cell.number_format = number_format
-
-def make_cmm(docx_path: Path):
-    stem = docx_path.stem
-    out_path = docx_path.with_name(f"{stem}_CMM.xlsx")
-    if out_path.exists():
-        print(f"[SKIP] {out_path.name} уже существует")
-        return
-
-    wb = load_workbook(TEMPLATE_PATH)  # .xltx или .xlsx
-    set_named_or_cell(wb, "ReportName", "D1", stem)
-    set_named_or_cell(wb, "CreatedDate", "D4", datetime.now(), DATE_FMT)
-
-    # Опционально: заполнение ExtraField1 на основе имени
-    gms = RE_SECTION.search(stem)
-    icode = RE_I_CODE.search(stem)
-    extra_parts = []
-    if gms:   extra_parts.append(gms.group(1))
-    if icode: extra_parts.append(icode.group(1))
-    if extra_parts:
-        set_named_or_cell(wb, "ExtraField1", "D6", " / ".join(extra_parts))
-
-    wb.save(out_path)
-    print(f"[OK] Создано: {out_path.name}")
-
-def main():
-    files = [p for p in SEARCH_DIR.glob("*.docx") if p.name.startswith("CT-DR-")]
-    for p in files:
-        make_cmm(p)
-    print(f"Готово. Обработано: {len(files)}")
-
-if __name__ == "__main__":
-    main()
+### Скрипт `toir_plan_checklist.py` (в этом репозитории)
+Ключевые настройки в начале файла:
+```7:12:toir_plan_checklist.py
+# === НАСТРОЙКИ ===
+TEMPLATE_PATH = Path("Template/CommentSheet_Template.xltx")  # или .xlsx
+SEARCH_DIR = Path("test")                        # папка с .docx
+REPORT_GLOB = "*.docx"                                       # фильтр отчётов
+DATE_FMT = "yyyy-mm-dd"                                      # формат в Excel для D4
 ```
+
+Запуск (Windows PowerShell из корня репозитория):
+```bash
+python .\toir_plan_checklist.py
+```
+
+Примечания к поведению текущей версии:
+- Обрабатываются только файлы, чьё имя начинается с `CT-DR-`.
+- Если именованных диапазонов `ReportName` и `CreatedDate` нет, значения пишутся в `D1/D4`, а именованные диапазоны автоматически создаются.
+- Поле `ExtraField1` (ячейка `D6`) заполняется по шаблону из имени: `GMSx / I.a.b` (если распознаны).
 
 ### (Опционально) Автогенерация при появлении новых файлов (`watchdog`)
 ```python
@@ -161,16 +120,16 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from pathlib import Path
 import time
-from make_cmm import make_cmm
+from toir_plan_checklist import make_cmm_for_report
 
-WATCH_DIR = Path("C:/Data/Reports")
+WATCH_DIR = Path("test")
 
 class Handler(FileSystemEventHandler):
     def on_created(self, event):
         p = Path(event.src_path)
         if p.is_file() and p.suffix.lower() == ".docx" and p.name.startswith("CT-DR-"):
             try:
-                make_cmm(p)
+                make_cmm_for_report(p)
             except Exception as e:
                 print(f"[ERROR] {p.name}: {e}")
 
@@ -246,7 +205,7 @@ End Sub
 ## Обработка краевых случаев
 - `_CMM.xlsx` уже существует → пропуск (или режим `--force`).
 - Имя не соответствует паттерну → файл создать, но `ExtraField1` пустое.
-- Нет именованных диапазонов → использовать адресные ячейки D1/D4 как fallback.
+- Нет именованных диапазонов → использовать адресные ячейки D1/D4 как fallback и автоматически создать именованные диапазоны `ReportName` и `CreatedDate`.
 - Нет прав на запись → лог ошибки, продолжить обработку.
 - Дата в имени отсутствует → `CreatedDate` = сегодня.
 
@@ -264,18 +223,19 @@ End Sub
 
 ## Конфигурация (пример YAML для README/SPEC)
 ```yaml
-template_path: C:/Data/Templates/CommentSheet_Template.xltx
-search_dir:    C:/Data/Reports
+template_path: Template/CommentSheet_Template.xltx
+search_dir:    test
+report_glob:   "*.docx"
 date_format:   yyyy-mm-dd
 parse:
-  section_regex: "(GMS\d+)"
-  icode_regex:   "(I\.\d+\.\d+)"
+  section_regex: "(GMS\\d+)"
+  icode_regex:   "(I\\.\\d+\\.\\d+)"
 behavior:
   skip_if_exists: true
   force: false
 log:
   enable: true
-  file: C:/Data/Reports/generation.log
+  file: generation.log
 ```
 
 ---
@@ -289,18 +249,17 @@ log:
 
 ---
 
-## Структура репозитория (рекомендация)
+## Структура репозитория
 ```
-project-root/
+toir_plan_checklist/
 ├─ README.md
-├─ templates/
+├─ toir_plan_checklist.py
+├─ Template/
 │  └─ CommentSheet_Template.xltx
-├─ tools/
-│  ├─ make_cmm.py
-│  └─ watch_folder.py   # опционально
-└─ samples/
-   ├─ input/   # примеры .docx
-   └─ output/  # ожидаемые _CMM.xlsx
+├─ test/
+│  ├─ CT-DR-B-LP-BVS13-I.7.4-00-1G-20250815-00.docx
+│  └─ CT-DR-B-LP-BVS13-I.7.4-00-1G-20250815-00_CMM.xlsx
+└─ doc/
 ```
 
 ---
