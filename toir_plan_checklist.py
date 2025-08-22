@@ -84,14 +84,15 @@ def make_cmm_for_report(report_path: Path):
 
     if cmm_path.exists():
         # не перезаписываем — считаем, что уже сделано
-        print(f"[SKIP] Уже есть: {cmm_path.name}")
+        print(f"[SKIP] Already exists: {cmm_path.name}")
         return
 
     wb = load_workbook(TEMPLATE_PATH)
+    wb.template = False
     fill_basic_fields(wb, stem)
     fill_extra_fields(wb, stem)
     wb.save(cmm_path)
-    print(f"[OK] Создано: {cmm_path.name}")
+    print(f"[OK] Created: {cmm_path.name}")
 
 def main():
     count = 0
@@ -100,7 +101,7 @@ def main():
         if docx.name.startswith("CT-DR-"):
             make_cmm_for_report(docx)
             count += 1
-    print(f"Готово. Обработано файлов: {count}")
+    print(f"Done. Processed files: {count}")
 
 if __name__ == "__main__":
     main()
