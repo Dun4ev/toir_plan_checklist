@@ -3,12 +3,13 @@ from pathlib import Path
 from datetime import datetime
 from openpyxl import load_workbook
 from openpyxl.workbook.defined_name import DefinedName
+import tkinter as tk
+from tkinter import filedialog
 
 # === НАСТРОЙКИ ===
 TEMPLATE_PATH = Path("Template/CommentSheet_Template.xltx")
-SEARCH_DIR = Path("test")
-REPORT_GLOB = "*.docx"
-DATE_FMT = "yyyy-mm-dd"
+REPORT_GLOB = "**/*.docx"
+DATE_FMT = "dd.mm.yyyy"
 # Путь к файлу с данными для поиска
 TZ_FILE_PATH = Path("Template/TZ.xlsx")
 
@@ -131,13 +132,30 @@ def make_cmm_for_report(report_path: Path):
 
 def main():
     """Главная функция для пакетной обработки."""
-    print("Запуск пакетной обработки...")
+    # Создаем корневое окно Tkinter, которое нам не нужно показывать
+    root = tk.Tk()
+    root.withdraw()
+
+    # Открываем диалог выбора папки
+    print("Пожалуйста, выберите папку с .docx файлами...")
+    search_dir = filedialog.askdirectory(
+        title="Выберите папку с .docx файлами"
+    )
+
+    # Если пользователь закрыл диалог, выходим
+    if not search_dir:
+        print("Папка не выбрана. Завершение работы.")
+        return
+        
+    search_path = Path(search_dir)
+
+    print(f"Запуск пакетной обработки в директории: {search_path.resolve()}")
     count = 0
     processed_files = 0
     
-    docx_files = list(SEARCH_DIR.glob(REPORT_GLOB))
+    docx_files = list(search_path.glob(REPORT_GLOB))
     if not docx_files:
-        print("В директории /test не найдены файлы .docx")
+        print(f"В директории '{search_path}' не найдены файлы .docx")
         return
 
     for docx in docx_files:
