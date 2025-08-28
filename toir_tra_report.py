@@ -11,11 +11,16 @@ try:
 except Exception:
     pass
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import Alignment
 
 # ============= НАСТРОЙКИ =============
+# Бизнес-логика: если имя шаблона содержит "CT-GST", это означает,
+# что трансмиттал предназначен для Заказчика. Это важно для будущей доработки
+# при использовании разных шаблонов.
 TEMPLATE_PATH = Path("Template/CT-GST-TRA-PRM-Template.xltx")  # шаблон трансмиталла (.xltx)
 OUTPUT_DIR    = Path("test")                                    # куда сохранить результат .xlsx
-DOCS_DIR      = Path("test/TRA_GST")                                   # папка с файлами для таблицы
+#DOCS_DIR      = Path("test/TRA_GST")                                   # папка с файлами для таблицы
+DOCS_DIR      = Path(r"D:\CT DOO\CT_docs - 01_Maintenance\03_Report_base\00_Review\04_TRA_GST\2025_T35")
 TZ_FILE_PATH  = Path("Template/TZ.xlsx")                       # карта индекс -> назив
 
 # Дата в шапке
@@ -53,7 +58,8 @@ DATE_PATTERNS = [
 
 # ---------- Утилиты ----------
 def list_docs(doc_dir: Path):
-    return [p for p in sorted(doc_dir.iterdir())
+    """Рекурсивно ищет все файлы в директории и поддиректориях."""
+    return [p for p in sorted(doc_dir.rglob('*'))
             if p.is_file() and p.suffix.lower() in ALLOWED_EXT]
 
 def write_date(ws):
@@ -71,6 +77,23 @@ def write_date(ws):
         cell.value = new
     else:
         cell.value = today
+
+def normalize_key(key: str) -> str:
+    """
+    Приводит ключ к каноническому виду: верхний регистр, кириллические суффиксы.
+    """
+    key = key.upper()
+    # Карта замен: {латиница: кириллица}
+    replacements = {
+        'A': 'А',
+        'B': 'Б',
+        'V': 'В',
+        'G': 'Г',
+    }
+    # Проходимся по всем заменам
+    for lat, cyr in replacements.items():
+        key = key.replace(lat, cyr)
+    return key
 
 def get_footer_row_by_name(wb, ws_name: str, name: str) -> int | None:
     # openpyxl >= 2.5: wb.defined_names is a DefinedNameDict
@@ -234,15 +257,10 @@ def build_tz_map_from_xlsx(xlsx_path: Path) -> dict[str, str]:
             if not naziv:
                 continue
 
-            # нормализуем ключи: латинская 'a' и кириллица 'а'
-            def variants(k: str):
-                return {k.upper(),
-                        k.upper().replace("A", "А"),
-                        k.upper().replace("А", "A")}
-
-            for key in variants(idx_val):
-                if key not in tz_map:  # первое попадание зафиксируем
-                    tz_map[key] = naziv
+            # Приводим ключ к каноническому виду и добавляем в карту
+            normalized_key = normalize_key(idx_val)
+            if normalized_key not in tz_map:
+                tz_map[normalized_key] = naziv
     return tz_map
 
 def extract_index_from_name(filename: str) -> str | None:
@@ -262,75 +280,143 @@ def extract_index_from_name(filename: str) -> str | None:
 # ---------- Заполнение таблицы ----------
 def insert_rows_and_preserve_footer_merges(ws, insert_at_row: int, num_rows: int):
     """
-    Вставляет строки перед указанной строкой, сохраняя объединенные ячейки,
-    которые находятся на этой строке или ниже (предположительно, в футере).
+    "Перемещает" футер вниз, вставляя строки и полностью сохраняя
+    исходное форматирование футера (стили, высота строк, объединенные ячейки).
     """
     if num_rows <= 0:
         return
 
-    # 1. Найти и сохранить все объединенные диапазоны, которые будут сдвинуты
+    # Диапазон колонок для копирования стиля (A..T, 1..20)
+    MAX_COL_TO_COPY = 20
+    
+    # 1. Определяем полный диапазон футера для копирования
+    footer_start_row = insert_at_row
+    footer_end_row = ws.max_row
+    if footer_end_row < footer_start_row:
+        # Если футер пустой или не определен, просто вставляем строки
+        ws.insert_rows(insert_at_row, amount=num_rows)
+        return
+
+    # 2. Копируем все данные и стили футера в память
+    footer_snapshot = []
+    for r_idx in range(footer_start_row, footer_end_row + 1):
+        row_dim = ws.row_dimensions[r_idx]
+        row_info = {
+            "height": row_dim.height,
+            "cells": []
+        }
+        for c_idx in range(1, MAX_COL_TO_COPY + 1):
+            cell = ws.cell(row=r_idx, column=c_idx)
+            row_info["cells"].append((cell.value, cell._style))
+        footer_snapshot.append(row_info)
+
+    # Копируем информацию об объединенных ячейках в футере
     footer_merges = []
-    # list(ws.merged_cells.ranges) создает копию списка диапазонов,
-    # так что мы можем безопасно итерировать и изменять ws.merged_cells
     for mr in list(ws.merged_cells.ranges):
-        if mr.min_row >= insert_at_row:
-            footer_merges.append(mr) # .copy() вызывал ошибку, он не нужен
+        if mr.min_row >= footer_start_row:
+            footer_merges.append(mr)
 
-    # 2. Временно разъединить эти диапазоны
+    # 3. Временно разъединяем ячейки в старом футере
     for mr in footer_merges:
-        try:
-            ws.unmerge_cells(str(mr))
-        except KeyError:
-            pass # Диапазон мог быть уже разъединен
+        ws.unmerge_cells(str(mr))
 
-    # 3. Вставить нужное количество строк
+    # 4. Вставляем нужное количество пустых строк перед старым футером
     ws.insert_rows(insert_at_row, amount=num_rows)
 
-    # 4. Сдвинуть и восстановить объединенные диапазоны
+    # 5. Восстанавливаем футер на новом месте
+    new_footer_start_row = footer_start_row + num_rows
+    for r_offset, row_info in enumerate(footer_snapshot):
+        new_row_num = new_footer_start_row + r_offset
+        
+        # Восстанавливаем высоту строки
+        if row_info["height"] is not None:
+            ws.row_dimensions[new_row_num].height = row_info["height"]
+
+        # Восстанавливаем ячейки (значение и стиль)
+        for c_offset, (value, style) in enumerate(row_info["cells"]):
+            col_num = 1 + c_offset
+            new_cell = ws.cell(row=new_row_num, column=col_num)
+            new_cell.value = value
+            new_cell._style = style
+            
+    # 6. Восстанавливаем объединенные ячейки со сдвигом
     for mr in footer_merges:
-        # Использование позиционных аргументов (col_offset, row_offset) для совместимости
         mr.shift(0, num_rows)
         ws.merge_cells(str(mr))
 
 
 def fill_rows(ws, files, tz_map: dict, start_row: int, final_footer_row: int):
     """
-    Заполняет строки данными. Предполагается, что необходимое место уже выделено.
+    Заполняет строки данными, копируя стиль и высоту из первой строки данных (start_row)
+    во все последующие. Также копирует постоянные значения из ячеек M, N, O
+    и устанавливает перенос текста для ячеек C и I.
     """
+    # 1. Определяем диапазон колонок для копирования стиля (B:P, 2:16)
+    min_col_style = 2
+    max_col_style = 16
+
+    # 2. Запоминаем стили, высоту и постоянные значения из шаблонной строки
+    template_styles = [ws.cell(row=start_row, column=j)._style for j in range(min_col_style, max_col_style + 1)]
+    template_row_height = ws.row_dimensions[start_row].height
+    
+    const_vals = {
+        13: ws.cell(row=start_row, column=13).value,
+        14: ws.cell(row=start_row, column=14).value,
+        15: ws.cell(row=start_row, column=15).value,
+    }
+
     for i, p in enumerate(files, 1):
         r = start_row + i - 1
-        # Проверка, чтобы случайно не записать в футер
         if r >= final_footer_row:
             print(f"[WARN] Попытка записи в строку {r}, которая уже является частью футера ({final_footer_row}). Пропускается.")
             continue
 
-        # Восстанавливаем объединения для строки данных
+        # 3. Применяем стили и высоту к новым строкам (пропуская первую)
+        if r > start_row:
+            if template_row_height is not None:
+                ws.row_dimensions[r].height = template_row_height
+            
+            for j_idx, style in enumerate(template_styles):
+                col = min_col_style + j_idx
+                ws.cell(row=r, column=col)._style = style
+
+        # 4. Восстанавливаем объединения для текущей строки
         ensure_row_merges(ws, r, final_footer_row)
 
-        # Ред. Број (B)
+        # 5. Заполняем ячейки данными
+        # Динамические данные
         ws.cell(r, COL_RB).value = i
-
-        # Број документа (C..H) — пишем в C, гиперссылка
+        
+        # Број документа (C..H)
         c = ws.cell(r, COL_BD)
         c.value = p.name
-        try:
-            c.hyperlink = p.as_uri()
-            c.style = "Hyperlink"
-        except Exception:
-            pass
-
-        # Назив документа (I..L) — из TZ.xlsx по индексу
+        c.alignment = c.alignment + Alignment(wrap_text=True)
+            
+        # Назив документа (I..L)
         idx = extract_index_from_name(p.name)
-        naziv = ""
+        base_naziv = ""
         if idx:
-            candidates = {idx.upper(), idx.upper().replace("A","А"), idx.upper().replace("А","A")}
-            for k in candidates:
-                if k in tz_map:
-                    naziv = tz_map[k]
-                    break
-        ws.cell(r, COL_NZ).value = naziv if naziv else p.stem
+            # Нормализуем ключ из имени файла и ищем его в карте
+            normalized_key = normalize_key(idx)
+            if normalized_key in tz_map:
+                base_naziv = tz_map[normalized_key]
+        
+        if not base_naziv:
+            base_naziv = p.stem
 
-    # Возвращаем позицию футера, которую нам передали, т.к. она не менялась
+        # Добавляем префикс, если в имени файла есть "_CMM"
+        final_naziv = base_naziv
+        if "_CMM" in p.name.upper(): # Используем upper() для надежности
+            final_naziv = "Листа коментара уз документ. " + base_naziv
+
+        naziv_cell = ws.cell(r, COL_NZ)
+        naziv_cell.value = final_naziv
+        naziv_cell.alignment = naziv_cell.alignment + Alignment(wrap_text=True)
+
+        # Постоянные данные
+        for col_num, value in const_vals.items():
+            ws.cell(row=r, column=col_num).value = value
+
     return final_footer_row
 
 # ---------- Сохранение ----------
@@ -339,7 +425,7 @@ def save_with_increment(wb, out_dir: Path, prefix="CT-GST-TRA-PRM-"):
     today = datetime.now().strftime("%y%m%d")
     n = 1
     while True:
-        out = out_dir / f"{prefix}{today}{n:02d}.xlsx"
+        out = out_dir / f"{prefix}{today}_{n:02d}.xlsx"
         if not out.exists():
             wb.save(out)
             print(f"[OK] Сохранено: {out}")
@@ -368,25 +454,24 @@ def main():
 
     # --- Новая логика вставки строк ---
     num_files = len(files)
-    # В шаблоне уже есть пустые строки. Посчитаем, сколько их.
     available_data_rows = footer_row - FIRST_DATA_ROW
     
     rows_to_insert = 0
     if num_files > available_data_rows:
         rows_to_insert = num_files - available_data_rows
 
-    # Вставляем строки, сохраняя форматирование футера
     if rows_to_insert > 0:
         insert_rows_and_preserve_footer_merges(ws, footer_row, rows_to_insert)
 
-    # Вычисляем новую позицию футера
     new_footer_row = footer_row + rows_to_insert
-
-    # Заполняем данные в теперь уже достаточном пространстве
     final_footer_row = fill_rows(ws, files, tz_map, FIRST_DATA_ROW, new_footer_row)
-
-    # (опционально) перепривязка FooterAnchor к актуальной строке
     update_footer_anchor(wb, ws.title, FOOTER_ANCHOR_NAME, final_footer_row)
+
+    # --- Установка области печати ---
+    # Область от B3 до колонки P и до последней заполненной строки.
+    last_row = ws.max_row
+    ws.print_area = f'B3:P{last_row}'
+    print(f"[INFO] Область печати установлена на: {ws.print_area}")
 
 
     # 7) Сохранение результата (.xlsx)

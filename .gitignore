@@ -1,0 +1,27 @@
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv
+venv
+
+# Environment variables
+.env
+
+# IDE configuration files
+.vscode/
+.idea/
+
+# Generated output directory
+# Папка с результатами работы скриптов
+/test/
+
+# Temporary Office files
+~$*.xlsx
+~$*.xltx
+
+# macOS files
+.DS_Store
