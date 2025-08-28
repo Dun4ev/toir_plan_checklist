@@ -38,9 +38,9 @@ MERGE_NZ_FROM, MERGE_NZ_TO = 9, 12   # I..L
 # Какие файлы включать
 ALLOWED_EXT = {".pdf", ".docx", ".xlsx", ".xls", ".dwg"}
 
-# Индекс ТЗ: I.3.33 / II.2.7 / I.2.7a/а (+ опц. четвертый уровень)
+# Индекс ТЗ: II.12 / I.3.33 / II.2.7 / I.2.7a/а (+ опц. четвертый уровень)
 RE_INDEX = re.compile(
-    r"\b([IVXLCDM]+)\.(\d+)\.(\d+)(?:\.(\d+))?([A-Za-zА-Яа-я])?\b",
+    r"\b([IVXLCDM]+)\.(\d+)(?:\.(\d+))?(?:\.(\d+))?([A-Za-zА-Яа-я])?\b",
     re.IGNORECASE
 )
 
@@ -206,9 +206,14 @@ def build_tz_map_from_xlsx(xlsx_path: Path) -> dict[str, str]:
                 if isinstance(v, str):
                     m = RE_INDEX.search(v)
                     if m:
-                        roman, a, b, extra, suf = m.groups()
+                        roman, num1, num2, num3, suf = m.groups()
                         suf = suf or ""
-                        idx_val = f"{roman.upper()}.{a}.{b}" + (f".{extra}" if extra else "") + suf
+                        idx_val = f"{roman.upper()}.{num1}"
+                        if num2:
+                            idx_val += f".{num2}"
+                        if num3:
+                            idx_val += f".{num3}"
+                        idx_val += suf
                         idx_col = c
                         break
             if not idx_val:
@@ -244,9 +249,15 @@ def extract_index_from_name(filename: str) -> str | None:
     m = RE_INDEX.search(filename)
     if not m:
         return None
-    roman, a, b, extra, suf = m.groups()
+    roman, num1, num2, num3, suf = m.groups()
     suf = suf or ""
-    return f"{roman.upper()}.{a}.{b}" + (f".{extra}" if extra else "") + suf
+    idx = f"{roman.upper()}.{num1}"
+    if num2:
+        idx += f".{num2}"
+    if num3:
+        idx += f".{num3}"
+    idx += suf
+    return idx
 
 # ---------- Заполнение таблицы ----------
 def insert_rows_and_preserve_footer_merges(ws, insert_at_row: int, num_rows: int):

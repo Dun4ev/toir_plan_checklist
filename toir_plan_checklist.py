@@ -14,7 +14,7 @@ TZ_FILE_PATH = Path("Template/TZ.xlsx")
 
 # Регулярка на извлечение полезных фрагментов из имени (пример)
 RE_SECTION = re.compile(r"(GMS\d+)", re.IGNORECASE)
-RE_I_CODE  = re.compile(r"(I+\.\d+\.\d+(\.\d+)?[a-z]?)", re.IGNORECASE)
+RE_I_CODE  = re.compile(r"\b((?:[IVXLCDM]+)\.(?:\d+)(?:\.\d+)?(?:\.\d+)?(?:[A-Za-zА-Яа-я])?)\b", re.IGNORECASE)
 
 def find_description_in_tz_file(lookup_key: str) -> str | None:
     """
@@ -150,9 +150,9 @@ def main():
     root.withdraw()
 
     # Открываем диалог выбора папки
-    print("Пожалуйста, выберите папку с .docx файлами...")
+    print("Пожалуйста, выберите папку с файлами отчетов (.docx, .pdf)...")
     search_dir = filedialog.askdirectory(
-        title="Выберите папку с .docx файлами"
+        title="Выберите папку с файлами отчетов (.docx, .pdf)"
     )
 
     # Если пользователь закрыл диалог, выходим
@@ -163,21 +163,23 @@ def main():
     search_path = Path(search_dir)
 
     print(f"Запуск пакетной обработки в директории: {search_path.resolve()}")
-    count = 0
-    processed_files = 0
     
+    # Ищем файлы .docx и .pdf
     docx_files = list(search_path.glob("**/*.docx"))
-    if not docx_files:
-        print(f"В директории '{search_path}' не найдены файлы .docx")
+    pdf_files = list(search_path.glob("**/*.pdf"))
+    files_to_process = docx_files + pdf_files
+
+    if not files_to_process:
+        print(f"В директории '{search_path}' и ее подпапках не найдены файлы .docx или .pdf.")
         return
 
-    for docx in docx_files:
-        count += 1
-        if docx.name.startswith("CT-DR-"):
-            make_cmm_for_report(docx)
+    processed_files = 0
+    for doc_file in files_to_process:
+        if doc_file.name.startswith("CT-DR-"):
+            make_cmm_for_report(doc_file)
             processed_files += 1
             
-    print(f"Обработка завершена. Всего файлов: {count}. Обработано: {processed_files}.")
+    print(f"Обработка завершена. Всего найдено файлов (.docx, .pdf): {len(files_to_process)}. Обработано (с префиксом CT-DR-): {processed_files}.")
 
 if __name__ == "__main__":
     main()
