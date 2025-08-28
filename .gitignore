@@ -19,6 +19,13 @@ venv
 # Папка с результатами работы скриптов
 /test/
 
+# Project templates (should not be in repo)
+# Игнорируем все содержимое папки Template,
+# но оставляем саму папку в репозитории.
+/Template/*
+# Не игнорировать файл-плейсхолдер, чтобы папка была видна
+!/Template/.gitkeep
+
 # Temporary Office files
 ~$*.xlsx
 ~$*.xltx
