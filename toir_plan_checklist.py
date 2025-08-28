@@ -8,32 +8,45 @@ from tkinter import filedialog
 
 # === НАСТРОЙКИ ===
 TEMPLATE_PATH = Path("Template/CommentSheet_Template.xltx")
-REPORT_GLOB = "**/*.docx"
 DATE_FMT = "dd.mm.yyyy"
 # Путь к файлу с данными для поиска
 TZ_FILE_PATH = Path("Template/TZ.xlsx")
 
 # Регулярка на извлечение полезных фрагментов из имени (пример)
 RE_SECTION = re.compile(r"(GMS\d+)", re.IGNORECASE)
-RE_I_CODE  = re.compile(r"(I+\.\d+\.\d+(\.\d+)?)", re.IGNORECASE) # Updated to handle e.g. II.8.1.1
+RE_I_CODE  = re.compile(r"(I+\.\d+\.\d+(\.\d+)?[a-z]?)", re.IGNORECASE)
 
 def find_description_in_tz_file(lookup_key: str) -> str | None:
     """
     Ищет ключ в колонке B файла TZ.xlsx и возвращает
     соответствующее значение из колонки C.
+    Поддерживает транслитерацию для кириллических букв в конце ключа.
     """
     if not TZ_FILE_PATH.exists():
         print(f"  - [ERROR] Файл с данными не найден: {TZ_FILE_PATH}")
         return None
+
+    # Карта для транслитерации
+    translit_map = {'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г'}
     
+    # Создаем список ключей для поиска
+    keys_to_find = {lookup_key.strip()}
+    
+    # Проверяем, заканчивается ли ключ на одну из латинских букв
+    if lookup_key and lookup_key[-1] in translit_map:
+        # Создаем альтернативный ключ с кириллической буквой
+        cyrillic_key = lookup_key[:-1] + translit_map[lookup_key[-1]]
+        keys_to_find.add(cyrillic_key)
+        print(f"  - [INFO] Обнаружен возможный транслит. Ищем ключи: {keys_to_find}")
+
     try:
         wb = load_workbook(TZ_FILE_PATH, data_only=True)
         ws = wb['sheet1'] 
         
-        # Ищем точное совпадение в колонке B
+        # Ищем точное совпадение в колонке B по любому из ключей
         for row in ws.iter_rows(values_only=True):
-            # колонка B -> индекс 1, колонка C -> индекс 2
-            if row[1] and str(row[1]).strip() == lookup_key:
+            cell_value = str(row[1]).strip() if row[1] else ""
+            if cell_value in keys_to_find:
                 return row[2] # Возвращаем описание из колонки C
         
         return None # Если ничего не найдено
@@ -153,7 +166,7 @@ def main():
     count = 0
     processed_files = 0
     
-    docx_files = list(search_path.glob(REPORT_GLOB))
+    docx_files = list(search_path.glob("**/*.docx"))
     if not docx_files:
         print(f"В директории '{search_path}' не найдены файлы .docx")
         return
