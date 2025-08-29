@@ -18,9 +18,9 @@ from openpyxl.styles import Alignment
 # что трансмиттал предназначен для Заказчика. Это важно для будущей доработки
 # при использовании разных шаблонов.
 TEMPLATE_PATH = Path("Template/CT-GST-TRA-PRM-Template.xltx")  # шаблон трансмиталла (.xltx)
-OUTPUT_DIR    = Path("test")                                    # куда сохранить результат .xlsx
-#DOCS_DIR      = Path("test/TRA_GST")                                   # папка с файлами для таблицы
-DOCS_DIR      = Path(r"D:\CT DOO\CT_docs - 01_Maintenance\03_Report_base\00_Review\04_TRA_GST\2025_T35")
+OUTPUT_DIR    = Path("test")                                   # куда сохранить результат .xlsx
+DOCS_DIR      = Path("test/TRA_GST")                           # папка с файлами для таблицы
+#DOCS_DIR      = Path(r"D:\CT DOO\CT_docs - 01_Maintenance\03_Report_base\00_Review\04_TRA_GST\2025_T35")
 TZ_FILE_PATH  = Path("Template/TZ.xlsx")                       # карта индекс -> назив
 
 # Дата в шапке
@@ -401,13 +401,15 @@ def fill_rows(ws, files, tz_map: dict, start_row: int, final_footer_row: int):
             if normalized_key in tz_map:
                 base_naziv = tz_map[normalized_key]
         
-        if not base_naziv:
-            base_naziv = p.stem
-
-        # Добавляем префикс, если в имени файла есть "_CMM"
-        final_naziv = base_naziv
-        if "_CMM" in p.name.upper(): # Используем upper() для надежности
-            final_naziv = "Листа коментара уз документ. " + base_naziv
+        final_naziv = ""
+        # Только если нашли базовое наименование, формируем итоговую строку
+        if base_naziv:
+            prefix = ""
+            if "-C-" in p.name.upper():
+                prefix += "Корективно одржавање. "
+            if "_CMM" in p.name.upper():
+                prefix += "Листа коментара уз документ. "
+            final_naziv = prefix + base_naziv
 
         naziv_cell = ws.cell(r, COL_NZ)
         naziv_cell.value = final_naziv
