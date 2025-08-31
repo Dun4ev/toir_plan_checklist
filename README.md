@@ -4,11 +4,11 @@
 
 ## Структура проекта
 
--   `toir_plan_checklist.py`: Скрипт для работы с чек-листами планов ТОиР.
+-   `toir_cmm.py`: Скрипт для работы с чек-листами планов ТОиР.
 -   `toir_tra_report.py`: Скрипт для генерации Excel-отчетов (трансмитталов).
 -   `toir_tra_par.py`: Вспомогательный скрипт для генерации отчетов.
 
 ## Документация
 
--   [**`toir_plan_checklist.md`**](./toir_plan_checklist.md): Описание работы скрипта `toir_plan_checklist.py`.
+-   [**`toir_cmm.md`**](./toir_cmm.md): Описание работы скрипта `toir_cmm.py`.
 -   [**`toir_tra_report.md`**](./toir_tra_report.md): Описание работы скрипта `toir_tra_report.py`.

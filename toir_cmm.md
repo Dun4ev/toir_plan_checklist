@@ -1,4 +1,4 @@
-# toir_plan_checklist
+# toir_cmm
 # Автогенерация листов комментариев к отчётам (`*_CMM.xlsx`)
 
 ## TL;DR
@@ -81,7 +81,7 @@
 pip install openpyxl
 ```
 
-### Скрипт `toir_plan_checklist.py`
+### Скрипт `toir_cmm.py`
 Ключевые настройки в начале файла:
 ```python
 # === НАСТРОЙКИ ===
@@ -93,7 +93,7 @@ TZ_FILE_PATH = Path("Template/TZ.xlsx")
 ### Запуск
 Запустите скрипт (из корня репозитория):
 ```bash
-python toir_plan_checklist.py
+python toir_cmm.py
 ```
 После этого появится окно, в котором нужно будет указать папку для обработки.
 
@@ -118,9 +118,9 @@ python toir_plan_checklist.py
 
 ## Структура репозитория
 '''
-toir_plan_checklist/
+toir_cmm/
 ├─ README.md
-├─ toir_plan_checklist.py
+├─ toir_cmm.py
 ├─ Template/
 │  ├─ CommentSheet_Template.xltx
 │  └─ TZ.xlsx

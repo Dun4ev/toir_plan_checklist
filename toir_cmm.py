@@ -41,7 +41,7 @@ def find_description_in_tz_file(lookup_key: str) -> str | None:
 
     try:
         wb = load_workbook(TZ_FILE_PATH, data_only=True)
-        ws = wb['sheet1'] 
+        ws = wb['gen_cl'] 
         
         # Ищем точное совпадение в колонке B по любому из ключей
         for row in ws.iter_rows(values_only=True):
