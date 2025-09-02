@@ -4,6 +4,7 @@ from datetime import datetime
 import sys
 import os
 import subprocess
+import zipfile
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -62,7 +63,7 @@ DATE_PATTERNS = [
 
 # ---------- БИЗНЕС-ЛОГИКА (ОСНОВНОЙ КОД ОБРАБОТКИ) ----------
 
-def process_files(target_dir: Path, template_path: Path, status_callback):
+def process_files(target_dir: Path, template_path: Path, status_callback, create_archive_flag: bool, delete_files_flag: bool):
     """Основная функция для обработки файлов и создания отчета."""
     try:
         status_callback(f"Загрузка шаблона: {template_path.name}")
@@ -116,7 +117,34 @@ def process_files(target_dir: Path, template_path: Path, status_callback):
         prefix = template_path.stem.replace("-Template", "-")
         saved_path = save_with_increment(wb, target_dir, prefix=prefix)
         
-        status_callback(f"Готово! Файл сохранен. Открываю папку...")
+        if create_archive_flag:
+            status_callback("Создание ZIP-архива...")
+            archive_name = saved_path.with_suffix('').name + "_att.zip"
+            archive_path = saved_path.parent / archive_name
+            
+            try:
+                with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for file_to_add in files:
+                        zipf.write(file_to_add, arcname=file_to_add.name)
+                
+                if delete_files_flag:
+                    status_callback("Удаление исходных файлов...")
+                    try:
+                        for file_to_delete in files:
+                            os.remove(file_to_delete)
+                        status_callback("Исходные файлы удалены. Открываю папку...")
+                    except Exception as e:
+                        messagebox.showerror("Ошибка удаления", f"Не удалось удалить исходные файлы: {e}")
+                        status_callback("Ошибка удаления файлов.")
+                else:
+                    status_callback(f"Архив создан. Открываю папку...")
+
+            except Exception as e:
+                status_callback(f"Ошибка создания архива: {e}")
+                messagebox.showerror("Ошибка архивации", f"Не удалось создать ZIP-архив: {e}")
+        else:
+             status_callback(f"Готово! Файл сохранен. Открываю папку...")
+
         try:
             if sys.platform == "win32":
                 os.startfile(saved_path.parent)
@@ -343,69 +371,58 @@ def create_transmittal_gui():
     """Создает и управляет GUI для выбора папки и шаблона."""
     root = tk.Tk()
     root.title("Формирование трансмиттала")
-    root.geometry("500x400")
+    root.geometry("550x560") # Увеличим высоту для нового текста
     root.resizable(False, False)
 
     # --- Стилизация ---
-    # Цвета из примера
-    BG_COLOR = "#F4F6F5"  # Светлый фон
-    FRAME_COLOR = "#FFFFFF" # Белый цвет для "карточек"
-    BUTTON_COLOR = "#4CAF50" # Зеленый для кнопок
-    BUTTON_ACTIVE_COLOR = "#45a049" # Темно-зеленый при нажатии
-    TEXT_COLOR = "#333333" # Темно-серый текст
-    STATUS_BAR_COLOR = "#E0E0E0" # Серый для статус-бара
-
-    # Шрифты
+    BG_COLOR = "#F4F6F5"
+    FRAME_COLOR = "#FFFFFF"
+    BUTTON_COLOR = "#4CAF50"
+    BUTTON_ACTIVE_COLOR = "#45a049"
+    TEXT_COLOR = "#333333"
+    DISABLED_TEXT_COLOR = "#aaaaaa"
+    STATUS_BAR_COLOR = "#E0E0E0"
     FONT_NORMAL = ("Segoe UI", 10)
     FONT_BOLD = ("Segoe UI", 11, "bold")
     FONT_LABEL = ("Segoe UI", 9)
+    FONT_HELP_TEXT = ("Segoe UI", 8)
 
     root.config(bg=BG_COLOR)
 
-    # Настройка стилей ttk
     style = ttk.Style(root)
-    style.theme_use('clam') # 'clam' - одна из самых гибких тем
+    style.theme_use('clam')
 
-    # Стиль для кнопок
-    style.configure("TButton",
-                    background=BUTTON_COLOR,
-                    foreground="white",
-                    font=FONT_BOLD,
-                    bordercolor=BUTTON_COLOR,
-                    lightcolor=BUTTON_COLOR,
-                    darkcolor=BUTTON_COLOR,
-                    padding=(10, 8))
-    style.map("TButton",
-              background=[('active', BUTTON_ACTIVE_COLOR)],
-              foreground=[('active', 'white')])
-
-    # Стиль для выпадающего списка
-    style.configure("TMenubutton",
-                    background="white",
-                    foreground=TEXT_COLOR,
-                    font=FONT_NORMAL,
-                    arrowcolor=TEXT_COLOR,
-                    bordercolor=STATUS_BAR_COLOR)
-    
-    # Стиль для рамок и меток
+    style.configure("TButton", background=BUTTON_COLOR, foreground="white", font=FONT_BOLD, bordercolor=BUTTON_COLOR, lightcolor=BUTTON_COLOR, darkcolor=BUTTON_COLOR, padding=(10, 8))
+    style.map("TButton", background=[('active', BUTTON_ACTIVE_COLOR)], foreground=[('active', 'white')])
+    style.configure("TMenubutton", background="white", foreground=TEXT_COLOR, font=FONT_NORMAL, arrowcolor=TEXT_COLOR, bordercolor=STATUS_BAR_COLOR)
     style.configure("TFrame", background=BG_COLOR)
     style.configure("TLabel", background=BG_COLOR, foreground=TEXT_COLOR, font=FONT_NORMAL)
-    style.configure("Header.TLabel", font=FONT_BOLD)
+    style.configure("Header.TLabel", font=FONT_BOLD, background=FRAME_COLOR)
     style.configure("Status.TLabel", background=STATUS_BAR_COLOR, foreground=TEXT_COLOR, padding=5, font=("Segoe UI", 9))
     style.configure("Card.TFrame", background=FRAME_COLOR)
+    style.configure("TCheckbutton", background=FRAME_COLOR, font=FONT_NORMAL, foreground=TEXT_COLOR)
+    style.map("TCheckbutton", foreground=[('disabled', DISABLED_TEXT_COLOR)])
 
 
     # --- Переменные ---
     selected_folder = tk.StringVar()
     selected_template_key = tk.StringVar(value=list(TEMPLATES.keys())[0])
+    should_create_archive = tk.BooleanVar(value=True)
+    should_delete_files = tk.BooleanVar(value=False)
 
     # --- Функции-обработчики ---
+    def toggle_delete_option():
+        if should_create_archive.get():
+            delete_check.config(state=tk.NORMAL)
+        else:
+            delete_check.config(state=tk.DISABLED)
+            should_delete_files.set(False)
+
     def select_folder():
         folder_path = filedialog.askdirectory(title="Выберите папку с документами")
         if folder_path:
             selected_folder.set(folder_path)
-            folder_display_label.config(text=f"...{folder_path[-40:]}") # Показываем только часть пути
-
+            folder_display_label.config(text=f"...{folder_path[-50:]}")
             folder_name_upper = Path(folder_path).name.upper()
             default_key = "Общий (XXX)"
             for key in TEMPLATES:
@@ -433,40 +450,52 @@ def create_transmittal_gui():
             status_label.config(text=message)
             root.update_idletasks()
 
-        process_files(Path(target_dir), template_path, status_update)
+        process_files(Path(target_dir), template_path, status_update, should_create_archive.get(), should_delete_files.get())
         run_button.config(state=tk.NORMAL)
 
     # --- Компоновка ---
-    main_frame = ttk.Frame(root, padding=(20, 10))
+    main_frame = ttk.Frame(root, padding=(15, 10))
     main_frame.pack(fill=tk.BOTH, expand=True)
 
     # Блок 1: Выбор папки
-    folder_card = ttk.Frame(main_frame, style="Card.TFrame", padding=20)
-    folder_card.pack(fill=tk.X, pady=(10, 10))
-    
-    ttk.Label(folder_card, text="1. Выберите папку с документами", style="Header.TLabel", background=FRAME_COLOR).pack(anchor="w")
-    
-    folder_display_label = ttk.Label(folder_card, text="(не выбрана)", style="TLabel", background=FRAME_COLOR, font=FONT_LABEL, foreground="#757575")
+    folder_card = ttk.Frame(main_frame, style="Card.TFrame", padding=15)
+    folder_card.pack(fill=tk.X, pady=5)
+    ttk.Label(folder_card, text="1. Выберите папку с документами", style="Header.TLabel").pack(anchor="w")
+    folder_display_label = ttk.Label(folder_card, text="(не выбрана)", font=FONT_LABEL, foreground="#757575", background=FRAME_COLOR)
     folder_display_label.pack(anchor="w", pady=(5, 10))
-
     ttk.Button(folder_card, text="Выбрать папку...", command=select_folder, style="TButton").pack(anchor="w")
 
     # Блок 2: Выбор шаблона
-    template_card = ttk.Frame(main_frame, style="Card.TFrame", padding=20)
-    template_card.pack(fill=tk.X, pady=10)
-
-    ttk.Label(template_card, text="2. Выберите компанию (шаблон)", style="Header.TLabel", background=FRAME_COLOR).pack(anchor="w")
+    template_card = ttk.Frame(main_frame, style="Card.TFrame", padding=15)
+    template_card.pack(fill=tk.X, pady=5)
+    ttk.Label(template_card, text="2. Выберите компанию (шаблон)", style="Header.TLabel").pack(anchor="w")
     
+    info_text = ("Подсказка: шаблон выбирается автоматически, если имя папки содержит (GST, TER и т.д.).\n" +
+                 "Шаблон 'Общий (XXX)' — универсальный и может требовать ручной правки.")
+    info_label = ttk.Label(template_card, text=info_text, font=FONT_HELP_TEXT, foreground="#757575", background=FRAME_COLOR, justify=tk.LEFT)
+    info_label.pack(anchor='w', pady=(5, 10))
+
     template_menu = ttk.OptionMenu(template_card, selected_template_key, selected_template_key.get(), *TEMPLATES.keys(), style="TMenubutton")
-    template_menu.pack(fill=tk.X, pady=10)
+    template_menu.pack(fill=tk.X)
 
     # Блок 3: Запуск
-    run_button = ttk.Button(main_frame, text="Сформировать отчет", command=run_processing, style="TButton")
-    run_button.pack(pady=20, ipady=10, fill=tk.X)
+    run_card = ttk.Frame(main_frame, style="Card.TFrame", padding=15)
+    run_card.pack(fill=tk.X, pady=5)
+    
+    archive_check = ttk.Checkbutton(run_card, text="Создать ZIP-архив с вложениями", variable=should_create_archive, style="TCheckbutton", command=toggle_delete_option)
+    archive_check.pack(anchor="w")
+
+    delete_check = ttk.Checkbutton(run_card, text="Удалить исходные файлы после архивации", variable=should_delete_files, style="TCheckbutton")
+    delete_check.pack(anchor="w", padx=(20, 0), pady=(0, 15))
+
+    run_button = ttk.Button(run_card, text="Сформировать отчет", command=run_processing, style="TButton")
+    run_button.pack(ipady=10, fill=tk.X)
 
     # Статус-бар
     status_label = ttk.Label(root, text="Ожидание...", style="Status.TLabel", anchor="w")
     status_label.pack(side=tk.BOTTOM, fill=tk.X)
+
+    toggle_delete_option()
 
     root.mainloop()
 
