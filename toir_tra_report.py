@@ -19,7 +19,7 @@ from openpyxl.styles import Alignment
 # при использовании разных шаблонов.
 TEMPLATE_PATH = Path("Template/CT-GST-TRA-PRM-Template.xltx")  # шаблон трансмиталла (.xltx)
 OUTPUT_DIR    = Path("test")                                   # куда сохранить результат .xlsx
-DOCS_DIR      = Path("test/TRA_GST")                           # папка с файлами для таблицы
+DOCS_DIR      = Path("test/toir_tra_report")                           # папка с файлами для таблицы
 #DOCS_DIR      = Path(r"D:\CT DOO\CT_docs - 01_Maintenance\03_Report_base\00_Review\04_TRA_GST\2025_T35")
 TZ_FILE_PATH  = Path("Template/TZ.xlsx")                       # карта индекс -> назив
 

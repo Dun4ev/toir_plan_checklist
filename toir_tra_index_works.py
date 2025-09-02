@@ -1,4 +1,3 @@
-
 import re
 import shutil
 from pathlib import Path
@@ -16,7 +15,12 @@ TZ_SHEET_NAME = "gen_cl"
 TZ_LOOKUP_COL = "B"  # Колонка с индексами (I.7.5)
 TZ_SUFFIX_COL = "J"  # Колонка с суффиксами для папки (KBV)
 
-# Регулярное выражение для извлечения ключа группировки (напр., I.7.5-00-1G)
+# Регулярное выражение для извлечения ключа группировки для C-файлов (напр., II.2.6-00-C)
+RE_C_GROUPING_KEY = re.compile(
+    r"(\b(?:(?:[IVXLCDM]+)\.(?:\d+)(?:\.\d+)?(?:\.\d+)?(?:[A-Za-zА-Яа-я])?)(?:-\d{2}-C))\b",
+    re.IGNORECASE
+)
+# Регулярное выражение для извлечения обычного ключа группировки (напр., I.7.5-00-1G)
 RE_GROUPING_KEY = re.compile(
     r"(\b(?:(?:[IVXLCDM]+)\.(?:\d+)(?:\.\d+)?(?:\.\d+)?(?:[A-Za-zА-Яа-я])?)(?:-\d{2}-\w{1,2}))\b",
     re.IGNORECASE
@@ -84,14 +88,14 @@ def main():
     """Главная функция для сортировки файлов по папкам."""
     # --- Блок выбора папки ---
     # Для быстрого тестирования: раскомментируйте строку ниже и укажите путь
-    # source_dir = r"test/TRA_GST" 
+    source_dir = r"test/toir_tra_index_works"
     
-    # Для обычной работы: закомментируйте строку выше и используйте диалог выбора папки
-    if 'source_dir' not in locals():
-        root = tk.Tk()
-        root.withdraw()
-        print("Пожалуйста, выберите папку с файлами для сортировки...")
-        source_dir = filedialog.askdirectory(title="Выберите папку для сортировки")
+    # # Для обычной работы: закомментируйте строку выше и используйте диалог выбора папки
+    # if 'source_dir' not in locals():
+    #     root = tk.Tk()
+    #     root.withdraw()
+    #     print("Пожалуйста, выберите папку с файлами для сортировки...")
+    #     source_dir = filedialog.askdirectory(title="Выберите папку для сортировки")
 
     if not source_dir:
         print("Папка не выбрана. Завершение работы.")
@@ -100,11 +104,19 @@ def main():
     source_path = Path(source_dir)
     print(f"Сканирование директории: {source_path.resolve()}")
 
-    # 1. Группируем все файлы по ключу (напр., 'I.7.5-00-1G')
+    # 1. Группируем все файлы по ключу
     files_by_key = defaultdict(list)
     all_files = [p for p in source_path.rglob('*') if p.is_file()]
 
     for file_path in all_files:
+        # Сначала ищем более специфичный ключ для C-файлов
+        c_match = RE_C_GROUPING_KEY.search(file_path.name)
+        if c_match:
+            key = c_match.group(1)
+            files_by_key[key].append(file_path)
+            continue  # Файл уже сгруппирован, переходим к следующему
+
+        # Если не C-файл, ищем обычный ключ
         match = RE_GROUPING_KEY.search(file_path.name)
         if match:
             key = match.group(1)
@@ -119,28 +131,32 @@ def main():
     # 2. Обрабатываем каждую группу
     for key, file_paths in files_by_key.items():
         print(f"\n--- Обработка группы: {key} ---")
-        
-        # Извлекаем индекс для поиска (напр., 'I.7.5' из 'I.7.5-00-1G')
-        index_match = RE_INDEX_CODE.search(key)
-        if not index_match:
-            print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Не удалось извлечь индекс из ключа '{key}'. Пропуск группы.")
-            continue
-        
-        index_code = index_match.group(1)
-        print(f"  - Поиск суффикса для индекса: {index_code}")
 
-        # Ищем суффикс в TZ.xlsx
-        suffix = find_suffix_in_tz_file(index_code)
-        if not suffix:
-            print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Суффикс для индекса '{index_code}' не найден в {TZ_FILE_PATH}. Пропуск группы.")
-            continue
-        
-        print(f"  - Найден суффикс: '{suffix}'")
+        folder_name: str
+        # Проверяем, является ли ключ C-ключом
+        if key.upper().endswith("-C"):
+            folder_name = transliterate_cyrillic_to_latin(key)
+            print(f"  - Группа C-файлов. Имя папки: {folder_name}")
+        else:
+            # Стандартная логика с поиском суффикса
+            index_match = RE_INDEX_CODE.search(key)
+            if not index_match:
+                print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Не удалось извлечь индекс из ключа '{key}'. Пропуск группы.")
+                continue
 
-        # 3. Создаем имя папки и саму папку
-        # Приводим ключ к латинице на случай, если в имени файла была кириллица
-        latin_key = transliterate_cyrillic_to_latin(key)
-        folder_name = f"{latin_key}_{suffix}"
+            index_code = index_match.group(1)
+            print(f"  - Поиск суффикса для индекса: {index_code}")
+
+            suffix = find_suffix_in_tz_file(index_code)
+            if not suffix:
+                print(f"  - [ПРЕДУПРЕПРЕЖДЕНИЕ] Суффикс для индекса '{index_code}' не найден в {TZ_FILE_PATH}. Пропуск группы.")
+                continue
+
+            print(f"  - Найден суффикс: '{suffix}'")
+            latin_key = transliterate_cyrillic_to_latin(key)
+            folder_name = f"{latin_key}_{suffix}"
+
+        # Создаем папку и перемещаем файлы
         dest_dir = source_path / folder_name
         
         print(f"  - Создание папки: {dest_dir.name}")
