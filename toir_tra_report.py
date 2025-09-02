@@ -116,17 +116,16 @@ def process_files(target_dir: Path, template_path: Path, status_callback):
         prefix = template_path.stem.replace("-Template", "-")
         saved_path = save_with_increment(wb, target_dir, prefix=prefix)
         
-        status_callback(f"Готово! Файл сохранен: {saved_path}")
-        if messagebox.askyesno("Успех", f"Отчет успешно создан:\n{saved_path}\n\nОткрыть папку с файлом?"):
-            try:
-                if sys.platform == "win32":
-                    os.startfile(saved_path.parent)
-                elif sys.platform == "darwin":
-                    subprocess.run(['open', str(saved_path.parent)])
-                else:
-                    subprocess.run(['xdg-open', str(saved_path.parent)])
-            except Exception as e:
-                messagebox.showwarning("Ошибка", f"Не удалось открыть папку: {e}")
+        status_callback(f"Готово! Файл сохранен. Открываю папку...")
+        try:
+            if sys.platform == "win32":
+                os.startfile(saved_path.parent)
+            elif sys.platform == "darwin":
+                subprocess.run(['open', str(saved_path.parent)])
+            else:
+                subprocess.run(['xdg-open', str(saved_path.parent)])
+        except Exception as e:
+            messagebox.showwarning("Ошибка", f"Не удалось автоматически открыть папку: {e}")
 
     except Exception as e:
         status_callback(f"Ошибка: {e}")
@@ -344,9 +343,59 @@ def create_transmittal_gui():
     """Создает и управляет GUI для выбора папки и шаблона."""
     root = tk.Tk()
     root.title("Формирование трансмиттала")
-    root.geometry("600x300")
+    root.geometry("500x400")
+    root.resizable(False, False)
 
-    # Переменные для хранения выбора
+    # --- Стилизация ---
+    # Цвета из примера
+    BG_COLOR = "#F4F6F5"  # Светлый фон
+    FRAME_COLOR = "#FFFFFF" # Белый цвет для "карточек"
+    BUTTON_COLOR = "#4CAF50" # Зеленый для кнопок
+    BUTTON_ACTIVE_COLOR = "#45a049" # Темно-зеленый при нажатии
+    TEXT_COLOR = "#333333" # Темно-серый текст
+    STATUS_BAR_COLOR = "#E0E0E0" # Серый для статус-бара
+
+    # Шрифты
+    FONT_NORMAL = ("Segoe UI", 10)
+    FONT_BOLD = ("Segoe UI", 11, "bold")
+    FONT_LABEL = ("Segoe UI", 9)
+
+    root.config(bg=BG_COLOR)
+
+    # Настройка стилей ttk
+    style = ttk.Style(root)
+    style.theme_use('clam') # 'clam' - одна из самых гибких тем
+
+    # Стиль для кнопок
+    style.configure("TButton",
+                    background=BUTTON_COLOR,
+                    foreground="white",
+                    font=FONT_BOLD,
+                    bordercolor=BUTTON_COLOR,
+                    lightcolor=BUTTON_COLOR,
+                    darkcolor=BUTTON_COLOR,
+                    padding=(10, 8))
+    style.map("TButton",
+              background=[('active', BUTTON_ACTIVE_COLOR)],
+              foreground=[('active', 'white')])
+
+    # Стиль для выпадающего списка
+    style.configure("TMenubutton",
+                    background="white",
+                    foreground=TEXT_COLOR,
+                    font=FONT_NORMAL,
+                    arrowcolor=TEXT_COLOR,
+                    bordercolor=STATUS_BAR_COLOR)
+    
+    # Стиль для рамок и меток
+    style.configure("TFrame", background=BG_COLOR)
+    style.configure("TLabel", background=BG_COLOR, foreground=TEXT_COLOR, font=FONT_NORMAL)
+    style.configure("Header.TLabel", font=FONT_BOLD)
+    style.configure("Status.TLabel", background=STATUS_BAR_COLOR, foreground=TEXT_COLOR, padding=5, font=("Segoe UI", 9))
+    style.configure("Card.TFrame", background=FRAME_COLOR)
+
+
+    # --- Переменные ---
     selected_folder = tk.StringVar()
     selected_template_key = tk.StringVar(value=list(TEMPLATES.keys())[0])
 
@@ -355,24 +404,19 @@ def create_transmittal_gui():
         folder_path = filedialog.askdirectory(title="Выберите папку с документами")
         if folder_path:
             selected_folder.set(folder_path)
-            folder_label.config(text=folder_path)
+            folder_display_label.config(text=f"...{folder_path[-40:]}") # Показываем только часть пути
 
-            # Автоматический выбор шаблона по имени папки
             folder_name_upper = Path(folder_path).name.upper()
             default_key = "Общий (XXX)"
-
-            # Итерация по ключам, кроме общего, для поиска совпадений
             for key in TEMPLATES:
-                if key == default_key:
-                    continue
-
+                if key == default_key: continue
                 match = re.search(r'\((.*?)\)', key)
                 if match:
                     abbreviation = match.group(1).upper()
                     if f"_{abbreviation}" in folder_name_upper or f"-{abbreviation}" in folder_name_upper:
                         selected_template_key.set(key)
                         break
-            else:  # Если совпадений не найдено
+            else:
                 selected_template_key.set(default_key)
 
     def run_processing():
@@ -384,39 +428,44 @@ def create_transmittal_gui():
         template_name = TEMPLATES[selected_template_key.get()]
         template_path = TEMPLATE_DIR / template_name
 
-        # Блокируем кнопку, чтобы избежать повторного запуска
         run_button.config(state=tk.DISABLED)
-        
         def status_update(message):
             status_label.config(text=message)
             root.update_idletasks()
 
         process_files(Path(target_dir), template_path, status_update)
-        
-        # Возвращаем кнопку в активное состояние
         run_button.config(state=tk.NORMAL)
 
-    # --- Виджеты ---
-    frame = ttk.Frame(root, padding="10")
-    frame.pack(fill=tk.BOTH, expand=True)
+    # --- Компоновка ---
+    main_frame = ttk.Frame(root, padding=(20, 10))
+    main_frame.pack(fill=tk.BOTH, expand=True)
 
-    # Выбор папки
-    ttk.Label(frame, text="Папка с документами:").pack(pady=5)
-    folder_label = ttk.Label(frame, text="(не выбрана)", relief="sunken", padding=5)
-    folder_label.pack(fill=tk.X, pady=2)
-    ttk.Button(frame, text="Выбрать папку...", command=select_folder).pack(pady=5)
+    # Блок 1: Выбор папки
+    folder_card = ttk.Frame(main_frame, style="Card.TFrame", padding=20)
+    folder_card.pack(fill=tk.X, pady=(10, 10))
+    
+    ttk.Label(folder_card, text="1. Выберите папку с документами", style="Header.TLabel", background=FRAME_COLOR).pack(anchor="w")
+    
+    folder_display_label = ttk.Label(folder_card, text="(не выбрана)", style="TLabel", background=FRAME_COLOR, font=FONT_LABEL, foreground="#757575")
+    folder_display_label.pack(anchor="w", pady=(5, 10))
 
-    # Выбор шаблона
-    ttk.Label(frame, text="Выберите компанию (шаблон):").pack(pady=10)
-    template_menu = ttk.OptionMenu(frame, selected_template_key, selected_template_key.get(), *TEMPLATES.keys())
-    template_menu.pack(fill=tk.X, pady=2)
+    ttk.Button(folder_card, text="Выбрать папку...", command=select_folder, style="TButton").pack(anchor="w")
 
-    # Кнопка запуска
-    run_button = ttk.Button(frame, text="Сформировать отчет", command=run_processing)
-    run_button.pack(pady=20, ipady=10)
+    # Блок 2: Выбор шаблона
+    template_card = ttk.Frame(main_frame, style="Card.TFrame", padding=20)
+    template_card.pack(fill=tk.X, pady=10)
+
+    ttk.Label(template_card, text="2. Выберите компанию (шаблон)", style="Header.TLabel", background=FRAME_COLOR).pack(anchor="w")
+    
+    template_menu = ttk.OptionMenu(template_card, selected_template_key, selected_template_key.get(), *TEMPLATES.keys(), style="TMenubutton")
+    template_menu.pack(fill=tk.X, pady=10)
+
+    # Блок 3: Запуск
+    run_button = ttk.Button(main_frame, text="Сформировать отчет", command=run_processing, style="TButton")
+    run_button.pack(pady=20, ipady=10, fill=tk.X)
 
     # Статус-бар
-    status_label = ttk.Label(root, text="Ожидание...", relief="sunken", anchor="w", padding=5)
+    status_label = ttk.Label(root, text="Ожидание...", style="Status.TLabel", anchor="w")
     status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
     root.mainloop()
