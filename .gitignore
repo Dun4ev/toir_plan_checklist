@@ -33,6 +33,12 @@ venv
 # macOS files
 .DS_Store
 
+# Игнорировать все файлы данных и шаблонов Excel
+**/TZ.xlsx
+**/CommentSheet_Template.xltx
+**/Контакты суб-ов.xlsx
+**/*.xltx
+
 # Файлы с данными и специфичные шаблоны, которые могли попасть в историю
 **/TZ.xlsx
 **/CommentSheet_Template.xltx
