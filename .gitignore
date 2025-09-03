@@ -37,3 +37,6 @@ venv
 **/TZ.xlsx
 **/CommentSheet_Template.xltx
 **/Контакты суб-ов.xlsx
+
+# Игнорировать все файлы шаблонов Excel
+**/*.xltx
