@@ -5,6 +5,7 @@ import sys
 import os
 import subprocess
 import zipfile
+import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -371,7 +372,7 @@ def create_transmittal_gui():
     """Создает и управляет GUI для выбора папки и шаблона."""
     root = tk.Tk()
     root.title("Формирование трансмиттала")
-    root.geometry("550x640") # Увеличим высоту для нового меню
+    root.geometry("550x640")
     root.resizable(False, False)
 
     # --- Стилизация ---
@@ -402,7 +403,6 @@ def create_transmittal_gui():
     style.configure("Card.TFrame", background=FRAME_COLOR)
     style.configure("TCheckbutton", background=FRAME_COLOR, font=FONT_NORMAL, foreground=TEXT_COLOR)
     style.map("TCheckbutton", foreground=[('disabled', DISABLED_TEXT_COLOR)])
-    # Стиль для радио-кнопок
     style.configure("TRadiobutton", background=FRAME_COLOR, font=FONT_NORMAL, foreground=TEXT_COLOR)
     style.map("TRadiobutton", background=[('active', BG_COLOR)])
 
@@ -414,10 +414,12 @@ def create_transmittal_gui():
     should_create_archive = tk.BooleanVar(value=True)
     should_delete_files = tk.BooleanVar(value=False)
     
-    # Этот словарь будет динамически заполняться шаблонами
     templates_map = {}
 
     # --- Функции-обработчики ---
+    def open_github(event=None):
+        webbrowser.open_new("https://github.com/Dun4ev/toir_plan_checklist")
+
     def update_template_options(*args):
         nonlocal templates_map
         status_dir_name = TEMPLATE_STATUSES.get(selected_status_key.get())
@@ -429,15 +431,13 @@ def create_transmittal_gui():
 
         if templates_path.is_dir():
             for f in templates_path.glob("*.xltx"):
-                # Создаем более читаемые имена для меню
                 key_name = f.stem.replace("-Template", "").replace("CT-", "").replace("-PRM", "")
                 if "XXX" in key_name:
                     key_name = "Общий (XXX)"
                 else:
-                    key_name = f"{key_name.split('-')[1]} ({key_name.split('-')[0]})" # Пример: "Gastrans (GST)"
+                    key_name = f"{key_name.split('-')[1]} ({key_name.split('-')[0]})"
                 templates_map[key_name] = f.name
         
-        # Обновление меню шаблонов
         menu = template_menu["menu"]
         menu.delete(0, "end")
         
@@ -450,27 +450,19 @@ def create_transmittal_gui():
         for key in templates_map.keys():
             menu.add_command(label=key, command=tk._setit(selected_template_key, key))
         
-        # Автоматический выбор шаблона
         folder_path = selected_folder.get()
+        default_key = "Общий (XXX)"
         if folder_path:
             folder_name_upper = Path(folder_path).name.upper()
-            default_key = "Общий (XXX)"
-            
-            # --- НОВАЯ ЛОГИКА: Динамическое определение аббревиатур ---
-            # 1. Извлекаем аббревиатуры из имен найденных шаблонов
             available_abbrs = []
             for template_filename in templates_map.values():
-                # Пример: CT-GST-TRA-PRM-Template.xltx -> ['CT', 'GST', 'TRA', 'PRM', 'Template.xltx']
                 parts = template_filename.split('-')
                 if len(parts) > 1 and parts[1].upper() != "XXX":
                     available_abbrs.append(parts[1].upper())
             
-            # 2. Ищем совпадение в имени папки
             found_template = False
-            # Сортируем по длине, чтобы сначала проверять более длинные и специфичные аббревиатуры
             for abbr in sorted(available_abbrs, key=len, reverse=True):
                 if f"_{abbr}" in folder_name_upper or f"-{abbr}" in folder_name_upper:
-                    # Нашли аббревиатуру, теперь найдем ключ шаблона (его отображаемое имя), которому она принадлежит
                     for key, filename in templates_map.items():
                         if f"-{abbr}-" in filename.upper():
                             selected_template_key.set(key)
@@ -479,16 +471,14 @@ def create_transmittal_gui():
                 if found_template:
                     break
             
-            # 3. Если ничего не найдено, используем шаблон по умолчанию
             if not found_template:
                 if default_key in templates_map:
                     selected_template_key.set(default_key)
         else:
-            if "Общий (XXX)" in templates_map:
-                selected_template_key.set("Общий (XXX)")
+            if default_key in templates_map:
+                selected_template_key.set(default_key)
             else:
                 selected_template_key.set(list(templates_map.keys())[0] if templates_map else "")
-
 
     def toggle_delete_option():
         if should_create_archive.get():
@@ -502,7 +492,7 @@ def create_transmittal_gui():
         if folder_path:
             selected_folder.set(folder_path)
             folder_display_label.config(text=f"...{folder_path[-50:]}")
-            update_template_options() # Обновляем шаблоны после выбора папки
+            update_template_options()
 
     def run_processing():
         target_dir = selected_folder.get()
@@ -544,7 +534,6 @@ def create_transmittal_gui():
     status_card.pack(fill=tk.X, pady=5)
     ttk.Label(status_card, text="2. Выберите статус отправки", style="Header.TLabel").pack(anchor="w", pady=(0, 5))
     
-    # Создаем радио-кнопки вместо выпадающего списка
     for status_text in TEMPLATE_STATUSES.keys():
         rb = ttk.Radiobutton(status_card, text=status_text, variable=selected_status_key, value=status_text, style="TRadiobutton")
         rb.pack(anchor="w", padx=5)
@@ -575,14 +564,21 @@ def create_transmittal_gui():
     run_button = ttk.Button(run_card, text="Сформировать отчет", command=run_processing, style="TButton")
     run_button.pack(ipady=10, fill=tk.X)
 
-    # Статус-бар
-    status_label = ttk.Label(root, text="Ожидание...", style="Status.TLabel", anchor="w")
-    status_label.pack(side=tk.BOTTOM, fill=tk.X)
+    # --- Нижняя панель (статус-бар и ссылка) ---
+    bottom_frame = tk.Frame(root, bg=STATUS_BAR_COLOR)
+    bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+    status_label = ttk.Label(bottom_frame, text="Ожидание...", style="Status.TLabel", anchor="w")
+    status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    link_label = tk.Label(bottom_frame, text="🔗 GitHub", fg="blue", cursor="hand2", bg=STATUS_BAR_COLOR, font=("Segoe UI", 8, "underline"))
+    link_label.pack(side=tk.RIGHT, padx=10)
+    link_label.bind("<Button-1>", open_github)
 
     # --- Инициализация и привязки ---
     selected_status_key.trace_add("write", update_template_options)
     toggle_delete_option()
-    update_template_options() # Первоначальное заполнение
+    update_template_options()
 
     root.mainloop()
 
