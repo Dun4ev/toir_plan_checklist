@@ -456,23 +456,33 @@ def create_transmittal_gui():
             folder_name_upper = Path(folder_path).name.upper()
             default_key = "Общий (XXX)"
             
-            # Новый список аббревиатур для поиска
-            abbrs = ["GST", "TER", "KBV", "ENK", "KNT", "KSR", "MSV", "MWT"]
+            # --- НОВАЯ ЛОГИКА: Динамическое определение аббревиатур ---
+            # 1. Извлекаем аббревиатуры из имен найденных шаблонов
+            available_abbrs = []
+            for template_filename in templates_map.values():
+                # Пример: CT-GST-TRA-PRM-Template.xltx -> ['CT', 'GST', 'TRA', 'PRM', 'Template.xltx']
+                parts = template_filename.split('-')
+                if len(parts) > 1 and parts[1].upper() != "XXX":
+                    available_abbrs.append(parts[1].upper())
             
+            # 2. Ищем совпадение в имени папки
             found_template = False
-            for key in templates_map.keys():
-                if key == default_key: continue
-                
-                for abbr in abbrs:
-                    if abbr in key.upper() and (f"_{abbr}" in folder_name_upper or f"-{abbr}" in folder_name_upper):
-                        selected_template_key.set(key)
-                        found_template = True
-                        break
+            # Сортируем по длине, чтобы сначала проверять более длинные и специфичные аббревиатуры
+            for abbr in sorted(available_abbrs, key=len, reverse=True):
+                if f"_{abbr}" in folder_name_upper or f"-{abbr}" in folder_name_upper:
+                    # Нашли аббревиатуру, теперь найдем ключ шаблона (его отображаемое имя), которому она принадлежит
+                    for key, filename in templates_map.items():
+                        if f"-{abbr}-" in filename.upper():
+                            selected_template_key.set(key)
+                            found_template = True
+                            break
                 if found_template:
                     break
             
+            # 3. Если ничего не найдено, используем шаблон по умолчанию
             if not found_template:
-                selected_template_key.set(default_key)
+                if default_key in templates_map:
+                    selected_template_key.set(default_key)
         else:
             if "Общий (XXX)" in templates_map:
                 selected_template_key.set("Общий (XXX)")
