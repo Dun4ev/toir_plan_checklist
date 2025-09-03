@@ -6,6 +6,7 @@ import os
 import subprocess
 import zipfile
 import webbrowser
+import json
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -32,12 +33,67 @@ TEMPLATE_STATUSES = {
     "na uvid_app": "na_uvid_app",
     "za upotrebu_cmm": "za_upotrebu_cmm",
 }
+SETTINGS_FILE = Path(__file__).parent / "settings.json"
+
+# --- Функции для работы с настройками ---
+def save_settings(settings_data: dict):
+    """Сохраняет данные в settings.json."""
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings_data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"[ОШИБКА] Не удалось сохранить settings.json: {e}")
+        return False
+
+def load_settings() -> Path:
+    """Загружает путь к шаблонам из settings.json или возвращает путь по умолчанию."""
+    default_path = Path(__file__).parent
+    if not SETTINGS_FILE.exists():
+        save_settings({"templates_path": ""}) # Создаем файл по умолчанию, если его нет
+        return default_path
+
+    try:
+        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+        
+        custom_path_str = settings.get("templates_path")
+        if not custom_path_str:
+            return default_path
+
+        custom_path = Path(custom_path_str)
+        if custom_path.is_dir():
+            print(f"Используется кастомный путь для шаблонов: {custom_path}")
+            return custom_path
+        else:
+            print(f"[ПРЕДУПРЕЖДЕНИЕ] Указанный в настройках путь не найден: {custom_path}")
+            return default_path
+
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"[ОШИБКА] Не удалось прочитать settings.json: {e}")
+        return default_path
+
+def ensure_template_structure(base_path: Path):
+    """Проверяет и создает необходимую структуру папок для шаблонов."""
+    print(f"Проверка структуры папок в: {base_path}")
+    try:
+        for status_folder in TEMPLATE_STATUSES.values():
+            (base_path / "Template" / "template_tra" / status_folder).mkdir(parents=True, exist_ok=True)
+        print("Структура папок в порядке.")
+    except Exception as e:
+        print(f"[ОШИБКА] Не удалось создать структуру папок: {e}")
+
+# --- Основные пути ---
+# Определяем корневую папку для шаблонов (кастомную или по умолчанию)
+TEMPLATES_ROOT = load_settings()
+ensure_template_structure(TEMPLATES_ROOT)
+
+
 
 # Пути по умолчанию
 BASE_DIR = Path(__file__).parent
-TEMPLATE_DIR = BASE_DIR / "Template" / "template_tra"
-# OUTPUT_DIR = BASE_DIR / "test"
-TZ_FILE_PATH = BASE_DIR / "Template" / "TZ.xlsx"
+TEMPLATE_DIR = TEMPLATES_ROOT / "Template" / "template_tra"
+TZ_FILE_PATH = TEMPLATES_ROOT / "Template" / "TZ.xlsx"
 
 # --- Настройки ячеек и колонок (можно вынести в конфиг) ---
 DATE_CELL_ADDR = "C3"
@@ -416,7 +472,30 @@ def create_transmittal_gui():
     
     templates_map = {}
 
-    # --- Функции-обработчики ---
+    # --- Функции-обработчики GUI ---
+    def select_custom_template_path():
+        """Диалог выбора и сохранения нового пути к папке с шаблонами."""
+        folder_path = filedialog.askdirectory(title="Выберите корневую папку с вашими шаблонами (внутри нее должна быть папка Template)")
+        if not folder_path:
+            return
+
+        # Читаем текущие настройки, чтобы не затереть другие возможные параметры
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            settings = {}
+        
+        settings["templates_path"] = folder_path
+        if save_settings(settings):
+            messagebox.showinfo(
+                "Настройка сохранена",
+                f"Новый путь к шаблонам сохранен.\n\n{folder_path}\n\nПожалуйста, перезапустите программу, чтобы применить изменения."
+            )
+        else:
+            messagebox.showerror("Ошибка", "Не удалось сохранить файл настроек.")
+
+
     def open_github(event=None):
         webbrowser.open_new("https://github.com/Dun4ev/toir_plan_checklist")
 
@@ -563,6 +642,13 @@ def create_transmittal_gui():
 
     run_button = ttk.Button(run_card, text="Сформировать отчет", command=run_processing, style="TButton")
     run_button.pack(ipady=10, fill=tk.X)
+
+    # --- Верхнее меню ---
+    menubar = tk.Menu(root)
+    settings_menu = tk.Menu(menubar, tearoff=0)
+    settings_menu.add_command(label="Указать папку с шаблонами...", command=select_custom_template_path)
+    menubar.add_cascade(label="Настройки", menu=settings_menu)
+    root.config(menu=menubar)
 
     # --- Нижняя панель (статус-бар и ссылка) ---
     bottom_frame = tk.Frame(root, bg=STATUS_BAR_COLOR)
