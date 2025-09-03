@@ -46,32 +46,38 @@ def save_settings(settings_data: dict):
         print(f"[ОШИБКА] Не удалось сохранить settings.json: {e}")
         return False
 
-def load_settings() -> Path:
-    """Загружает путь к шаблонам из settings.json или возвращает путь по умолчанию."""
+def load_settings() -> tuple[Path, dict]:
+    """Загружает настройки из settings.json или возвращает значения по умолчанию."""
     default_path = Path(__file__).parent
+    default_companies = {}
+    
     if not SETTINGS_FILE.exists():
-        save_settings({"templates_path": ""}) # Создаем файл по умолчанию, если его нет
-        return default_path
+        save_settings({"templates_path": "", "company_names": {}})
+        return default_path, default_companies
 
     try:
         with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
             settings = json.load(f)
         
+        # Загрузка пути
         custom_path_str = settings.get("templates_path")
-        if not custom_path_str:
-            return default_path
-
-        custom_path = Path(custom_path_str)
-        if custom_path.is_dir():
-            print(f"Используется кастомный путь для шаблонов: {custom_path}")
-            return custom_path
-        else:
-            print(f"[ПРЕДУПРЕЖДЕНИЕ] Указанный в настройках путь не найден: {custom_path}")
-            return default_path
+        final_path = default_path
+        if custom_path_str:
+            custom_path = Path(custom_path_str)
+            if custom_path.is_dir():
+                print(f"Используется кастомный путь для шаблонов: {custom_path}")
+                final_path = custom_path
+            else:
+                print(f"[ПРЕДУПРЕЖДЕНИЕ] Указанный в настройках путь не найден: {custom_path}")
+        
+        # Загрузка имен компаний
+        company_names = settings.get("company_names", default_companies)
+        
+        return final_path, company_names
 
     except (json.JSONDecodeError, Exception) as e:
         print(f"[ОШИБКА] Не удалось прочитать settings.json: {e}")
-        return default_path
+        return default_path, default_companies
 
 def ensure_template_structure(base_path: Path):
     """Проверяет и создает необходимую структуру папок для шаблонов."""
@@ -84,8 +90,8 @@ def ensure_template_structure(base_path: Path):
         print(f"[ОШИБКА] Не удалось создать структуру папок: {e}")
 
 # --- Основные пути ---
-# Определяем корневую папку для шаблонов (кастомную или по умолчанию)
-TEMPLATES_ROOT = load_settings()
+# Определяем корневую папку для шаблонов и загружаем имена компаний
+TEMPLATES_ROOT, COMPANY_NAMES = load_settings()
 ensure_template_structure(TEMPLATES_ROOT)
 
 
@@ -510,13 +516,23 @@ def create_transmittal_gui():
 
         if templates_path.is_dir():
             for f in templates_path.glob("*.xltx"):
-                key_name = f.stem.replace("-Template", "").replace("CT-", "").replace("-PRM", "")
-                if "XXX" in key_name:
-                    key_name = "Общий (XXX)"
-                else:
-                    key_name = f"{key_name.split('-')[1]} ({key_name.split('-')[0]})"
-                templates_map[key_name] = f.name
+                # Пример: CT-GST-TRA-PRM-Template.xltx -> GST
+                parts = f.stem.split('-')
+                if len(parts) > 1:
+                    abbr = parts[1].upper()
+                    # Ищем полное имя в настройках, если нет - используем саму аббревиатуру
+                    full_name = COMPANY_NAMES.get(abbr, abbr)
+                    
+                    # Формируем ключ для отображения в меню
+                    full_name = COMPANY_NAMES.get(abbr, abbr)
+                    if abbr == "XXX":
+                        full_name = COMPANY_NAMES.get("XXX", "Общий")
+                    
+                    key_name = f"({abbr}) {full_name}"
+
+                    templates_map[key_name] = f.name
         
+        # Обновление меню шаблонов
         menu = template_menu["menu"]
         menu.delete(0, "end")
         
@@ -526,22 +542,32 @@ def create_transmittal_gui():
             return
         
         template_menu.config(state=tk.NORMAL)
-        for key in templates_map.keys():
+        # Сортируем ключи, чтобы "Общий" был в конце
+        sorted_keys = sorted(templates_map.keys(), key=lambda x: "zzz" if "Общий" in x else x)
+        for key in sorted_keys:
             menu.add_command(label=key, command=tk._setit(selected_template_key, key))
         
+        # Автоматический выбор шаблона
         folder_path = selected_folder.get()
-        default_key = "Общий (XXX)"
+        default_key = COMPANY_NAMES.get("XXX", "Общий")
+
         if folder_path:
             folder_name_upper = Path(folder_path).name.upper()
+            # --- НОВАЯ ЛОГИКА: Динамическое определение аббревиатур ---
+            # 1. Извлекаем аббревиатуры из имен найденных шаблонов
             available_abbrs = []
             for template_filename in templates_map.values():
+                # Пример: CT-GST-TRA-PRM-Template.xltx -> ['CT', 'GST', 'TRA', 'PRM', 'Template.xltx']
                 parts = template_filename.split('-')
                 if len(parts) > 1 and parts[1].upper() != "XXX":
                     available_abbrs.append(parts[1].upper())
             
+            # 2. Ищем совпадение в имени папки
             found_template = False
+            # Сортируем по длине, чтобы сначала проверять более длинные и специфичные аббревиатуры
             for abbr in sorted(available_abbrs, key=len, reverse=True):
                 if f"_{abbr}" in folder_name_upper or f"-{abbr}" in folder_name_upper:
+                    # Нашли аббревиатуру, теперь найдем ключ шаблона (его отображаемое имя), которому она принадлежит
                     for key, filename in templates_map.items():
                         if f"-{abbr}-" in filename.upper():
                             selected_template_key.set(key)
@@ -550,6 +576,7 @@ def create_transmittal_gui():
                 if found_template:
                     break
             
+            # 3. Если ничего не найдено, используем шаблон по умолчанию
             if not found_template:
                 if default_key in templates_map:
                     selected_template_key.set(default_key)
@@ -557,7 +584,8 @@ def create_transmittal_gui():
             if default_key in templates_map:
                 selected_template_key.set(default_key)
             else:
-                selected_template_key.set(list(templates_map.keys())[0] if templates_map else "")
+                # Если нет даже папки, выбираем первый в списке
+                selected_template_key.set(sorted_keys[0] if sorted_keys else "")
 
     def toggle_delete_option():
         if should_create_archive.get():

@@ -1,3 +1,35 @@
 {
-  "templates_path": ""
+  "templates_path": "",
+  "company_names": {
+    "GST": "Gastrans",
+    "CDT": "Comita DTech",
+    "CNE": "Contex",
+    "DGT": "Drager",
+    "DTA": "DTA Process&Safety",
+    "ENL": "Energo Lab",
+    "ENK": "Energointeh Kibernetika",
+    "ERG": "ENREGRO",
+    "IDP": "IvDam",
+    "KBV": "KBV",
+    "KNT": "Kontron",
+    "KSR": "KSR Service",
+    "MRS": "Martin",
+    "MWT": "Milanovic",
+    "MSV": "MOS-AV",
+    "NTK": "Netiks",
+    "OST": "Ostral",
+    "PSI": "Petrolsoft",
+    "PTD": "Premi Trade",
+    "PMG": "PROMONT GROUP",
+    "RIM": "Real Impeks",
+    "SBT": "SBT",
+    "SNX": "SENERMAX",
+    "SIM": "SIEMENS ENERGY",
+    "TTP": "TehnoTerm",
+    "TMG": "TERMOGAMA",
+    "TER": "Termoinženjering",
+    "TSL": "Tesla Ekspo",
+    "VIS": "VIS Company",
+    "VLK": "Vulkan Inženjering"
+  }
 }
