@@ -25,11 +25,11 @@ except ImportError:
     sys.exit(1)
 
 # ============= НАСТРОЙКИ =============
-# Карта выбора шаблонов
-TEMPLATES = {
-    "Общий (XXX)": "CT-XXX-TRA-PRM-Template.xltx",
-    "Gastrans (GST)": "CT-GST-TRA-PRM-Template.xltx",
-    "Termoinženjering (TER)": "CT-TER-TRA-PRM-Template.xltx",
+# Карта статусов и соответствующих им папок
+TEMPLATE_STATUSES = {
+    "izdato na pregled_GST": "izdato_na_pregled_gst",
+    "na uvid_app": "na_uvid_app",
+    "za upotrebu_cmm": "za_upotrebu_cmm",
 }
 
 # Пути по умолчанию
@@ -371,7 +371,7 @@ def create_transmittal_gui():
     """Создает и управляет GUI для выбора папки и шаблона."""
     root = tk.Tk()
     root.title("Формирование трансмиттала")
-    root.geometry("550x520") # Увеличим высоту для нового элемента
+    root.geometry("550x640") # Увеличим высоту для нового меню
     root.resizable(False, False)
 
     # --- Стилизация ---
@@ -385,6 +385,7 @@ def create_transmittal_gui():
     FONT_NORMAL = ("Segoe UI", 10)
     FONT_BOLD = ("Segoe UI", 11, "bold")
     FONT_LABEL = ("Segoe UI", 9)
+    FONT_HELP_TEXT = ("Segoe UI", 8)
 
     root.config(bg=BG_COLOR)
 
@@ -401,15 +402,84 @@ def create_transmittal_gui():
     style.configure("Card.TFrame", background=FRAME_COLOR)
     style.configure("TCheckbutton", background=FRAME_COLOR, font=FONT_NORMAL, foreground=TEXT_COLOR)
     style.map("TCheckbutton", foreground=[('disabled', DISABLED_TEXT_COLOR)])
+    # Стиль для радио-кнопок
+    style.configure("TRadiobutton", background=FRAME_COLOR, font=FONT_NORMAL, foreground=TEXT_COLOR)
+    style.map("TRadiobutton", background=[('active', BG_COLOR)])
 
 
     # --- Переменные ---
     selected_folder = tk.StringVar()
-    selected_template_key = tk.StringVar(value=list(TEMPLATES.keys())[0])
+    selected_status_key = tk.StringVar(value=list(TEMPLATE_STATUSES.keys())[0])
+    selected_template_key = tk.StringVar()
     should_create_archive = tk.BooleanVar(value=True)
     should_delete_files = tk.BooleanVar(value=False)
+    
+    # Этот словарь будет динамически заполняться шаблонами
+    templates_map = {}
 
     # --- Функции-обработчики ---
+    def update_template_options(*args):
+        nonlocal templates_map
+        status_dir_name = TEMPLATE_STATUSES.get(selected_status_key.get())
+        if not status_dir_name:
+            return
+
+        templates_path = TEMPLATE_DIR / status_dir_name
+        templates_map.clear()
+
+        if templates_path.is_dir():
+            for f in templates_path.glob("*.xltx"):
+                # Создаем более читаемые имена для меню
+                key_name = f.stem.replace("-Template", "").replace("CT-", "").replace("-PRM", "")
+                if "XXX" in key_name:
+                    key_name = "Общий (XXX)"
+                else:
+                    key_name = f"{key_name.split('-')[1]} ({key_name.split('-')[0]})" # Пример: "Gastrans (GST)"
+                templates_map[key_name] = f.name
+        
+        # Обновление меню шаблонов
+        menu = template_menu["menu"]
+        menu.delete(0, "end")
+        
+        if not templates_map:
+            template_menu.config(state=tk.DISABLED)
+            selected_template_key.set("")
+            return
+        
+        template_menu.config(state=tk.NORMAL)
+        for key in templates_map.keys():
+            menu.add_command(label=key, command=tk._setit(selected_template_key, key))
+        
+        # Автоматический выбор шаблона
+        folder_path = selected_folder.get()
+        if folder_path:
+            folder_name_upper = Path(folder_path).name.upper()
+            default_key = "Общий (XXX)"
+            
+            # Новый список аббревиатур для поиска
+            abbrs = ["GST", "TER", "KBV", "ENK", "KNT", "KSR", "MSV", "MWT"]
+            
+            found_template = False
+            for key in templates_map.keys():
+                if key == default_key: continue
+                
+                for abbr in abbrs:
+                    if abbr in key.upper() and (f"_{abbr}" in folder_name_upper or f"-{abbr}" in folder_name_upper):
+                        selected_template_key.set(key)
+                        found_template = True
+                        break
+                if found_template:
+                    break
+            
+            if not found_template:
+                selected_template_key.set(default_key)
+        else:
+            if "Общий (XXX)" in templates_map:
+                selected_template_key.set("Общий (XXX)")
+            else:
+                selected_template_key.set(list(templates_map.keys())[0] if templates_map else "")
+
+
     def toggle_delete_option():
         if should_create_archive.get():
             delete_check.config(state=tk.NORMAL)
@@ -422,27 +492,22 @@ def create_transmittal_gui():
         if folder_path:
             selected_folder.set(folder_path)
             folder_display_label.config(text=f"...{folder_path[-50:]}")
-            folder_name_upper = Path(folder_path).name.upper()
-            default_key = "Общий (XXX)"
-            for key in TEMPLATES:
-                if key == default_key: continue
-                match = re.search(r'\((.*?)\)', key)
-                if match:
-                    abbreviation = match.group(1).upper()
-                    if f"_{abbreviation}" in folder_name_upper or f"-{abbreviation}" in folder_name_upper:
-                        selected_template_key.set(key)
-                        break
-            else:
-                selected_template_key.set(default_key)
+            update_template_options() # Обновляем шаблоны после выбора папки
 
     def run_processing():
         target_dir = selected_folder.get()
         if not target_dir:
             messagebox.showerror("Ошибка", "Пожалуйста, выберите папку с документами.")
             return
+        
+        status_dir_name = TEMPLATE_STATUSES.get(selected_status_key.get())
+        template_file_name = templates_map.get(selected_template_key.get())
 
-        template_name = TEMPLATES[selected_template_key.get()]
-        template_path = TEMPLATE_DIR / template_name
+        if not status_dir_name or not template_file_name:
+            messagebox.showerror("Ошибка", "Не удалось определить путь к шаблону. Проверьте выбор статуса и шаблона.")
+            return
+
+        template_path = TEMPLATE_DIR / status_dir_name / template_file_name
 
         run_button.config(state=tk.DISABLED)
         def status_update(message):
@@ -464,32 +529,50 @@ def create_transmittal_gui():
     folder_display_label.pack(anchor="w", pady=(5, 10))
     ttk.Button(folder_card, text="Выбрать папку...", command=select_folder, style="TButton").pack(anchor="w")
 
-    # Блок 2: Выбор шаблона
+    # Блок 2: Выбор статуса отправки
+    status_card = ttk.Frame(main_frame, style="Card.TFrame", padding=15)
+    status_card.pack(fill=tk.X, pady=5)
+    ttk.Label(status_card, text="2. Выберите статус отправки", style="Header.TLabel").pack(anchor="w", pady=(0, 5))
+    
+    # Создаем радио-кнопки вместо выпадающего списка
+    for status_text in TEMPLATE_STATUSES.keys():
+        rb = ttk.Radiobutton(status_card, text=status_text, variable=selected_status_key, value=status_text, style="TRadiobutton")
+        rb.pack(anchor="w", padx=5)
+
+    # Блок 3: Выбор шаблона
     template_card = ttk.Frame(main_frame, style="Card.TFrame", padding=15)
     template_card.pack(fill=tk.X, pady=5)
-    ttk.Label(template_card, text="2. Выберите компанию (шаблон)", style="Header.TLabel").pack(anchor="w")
-    template_menu = ttk.OptionMenu(template_card, selected_template_key, selected_template_key.get(), *TEMPLATES.keys(), style="TMenubutton")
-    template_menu.pack(fill=tk.X, pady=10)
+    ttk.Label(template_card, text="3. Выберите компанию (шаблон)", style="Header.TLabel").pack(anchor="w")
+    
+    info_text = ("Подсказка: шаблон выбирается автоматически, если имя папки содержит (GST, TER и т.д.).")
+    info_label = ttk.Label(template_card, text=info_text, font=FONT_HELP_TEXT, foreground="#757575", background=FRAME_COLOR, justify=tk.LEFT)
+    info_label.pack(anchor='w', pady=(5, 10))
 
-    # Блок 3: Запуск
+    template_menu = ttk.OptionMenu(template_card, selected_template_key, "", style="TMenubutton")
+    template_menu.pack(fill=tk.X)
+    template_menu.config(state=tk.DISABLED)
+
+    # Блок 4: Запуск
     run_card = ttk.Frame(main_frame, style="Card.TFrame", padding=15)
     run_card.pack(fill=tk.X, pady=5)
     
-    archive_check = ttk.Checkbutton(run_card, text="Создать ZIP-архив с вложениями для отправки", variable=should_create_archive, style="TCheckbutton", command=toggle_delete_option)
+    archive_check = ttk.Checkbutton(run_card, text="Создать ZIP-архив с вложениями", variable=should_create_archive, style="TCheckbutton", command=toggle_delete_option)
     archive_check.pack(anchor="w")
 
-    delete_check = ttk.Checkbutton(run_card, text="Удалить исходные (запакованные) файлы после архивации", variable=should_delete_files, style="TCheckbutton")
-    delete_check.pack(anchor="w", padx=(20, 0), pady=(0, 15)) # небольшой отступ для вложенности
+    delete_check = ttk.Checkbutton(run_card, text="Удалить исходные файлы после архивации", variable=should_delete_files, style="TCheckbutton")
+    delete_check.pack(anchor="w", padx=(20, 0), pady=(0, 15))
 
-    run_button = ttk.Button(run_card, text="Сформировать трансмиттал", command=run_processing, style="TButton")
+    run_button = ttk.Button(run_card, text="Сформировать отчет", command=run_processing, style="TButton")
     run_button.pack(ipady=10, fill=tk.X)
 
     # Статус-бар
     status_label = ttk.Label(root, text="Ожидание...", style="Status.TLabel", anchor="w")
     status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
-    # Инициализация состояния чекбокса удаления
+    # --- Инициализация и привязки ---
+    selected_status_key.trace_add("write", update_template_options)
     toggle_delete_option()
+    update_template_options() # Первоначальное заполнение
 
     root.mainloop()
 
