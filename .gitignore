@@ -32,3 +32,8 @@ venv
 
 # macOS files
 .DS_Store
+
+# Файлы с данными и специфичные шаблоны, которые могли попасть в историю
+**/TZ.xlsx
+**/CommentSheet_Template.xltx
+**/Контакты суб-ов.xlsx
