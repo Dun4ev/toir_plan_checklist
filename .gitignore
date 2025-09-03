@@ -18,6 +18,7 @@ venv
 # Generated output directory
 # Папка с результатами работы скриптов
 /test/
+test/
 
 # Project templates (should not be in repo)
 # Игнорируем все содержимое папки Template,
