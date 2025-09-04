@@ -15,6 +15,11 @@ venv
 .vscode/
 .idea/
 
+# PyInstaller files
+/build/
+/dist/
+*.spec
+
 # Generated output directory
 # Папка с результатами работы скриптов
 /test/

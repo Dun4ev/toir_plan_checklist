@@ -7,6 +7,7 @@ import subprocess
 import zipfile
 import webbrowser
 import json
+import shutil
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -67,7 +68,18 @@ DEFAULT_COMPANY_NAMES = {
     "VIS": "VIS Company",
     "VLK": "Vulkan Ingenjering",
 }
-SETTINGS_FILE = Path(__file__).parent / "settings.json"
+# --- Определение путей для .exe и обычного режима ---
+def get_base_path() -> Path:
+    """Возвращает базовый путь для ресурсов, работающий и для .exe."""
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # Запущено из PyInstaller bundle
+        return Path(sys.executable).parent
+    else:
+        # Запущено как обычный .py скрипт
+        return Path(__file__).parent
+
+BASE_DIR = get_base_path()
+SETTINGS_FILE = BASE_DIR / "settings.json"
 
 # --- Функции для работы с настройками ---
 def save_settings(settings_data: dict):
@@ -82,11 +94,12 @@ def save_settings(settings_data: dict):
 
 def load_settings() -> tuple[Path, dict]:
     """Загружает настройки из settings.json или возвращает значения по умолчанию."""
-    default_path = Path(__file__).parent
+    default_path = BASE_DIR
     default_companies = DEFAULT_COMPANY_NAMES
     
     if not SETTINGS_FILE.exists():
-        # First run: create settings.json with default company names
+        # Первый запуск: создаем settings.json
+        print(f"Файл настроек не найден. Создание нового: {SETTINGS_FILE}")
         save_settings({"templates_path": "", "company_names": DEFAULT_COMPANY_NAMES})
         return default_path, DEFAULT_COMPANY_NAMES
 
@@ -94,20 +107,15 @@ def load_settings() -> tuple[Path, dict]:
         with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
             settings = json.load(f)
         
-        # Загрузка пути
         custom_path_str = settings.get("templates_path")
         final_path = default_path
-        if custom_path_str:
-            custom_path = Path(custom_path_str)
-            if custom_path.is_dir():
-                print(f"Используется кастомный путь для шаблонов: {custom_path}")
-                final_path = custom_path
-            else:
-                print(f"[ПРЕДУПРЕЖДЕНИЕ] Указанный в настройках путь не найден: {custom_path}")
-        
-        # Загрузка имен компаний
+        if custom_path_str and Path(custom_path_str).is_dir():
+            print(f"Используется кастомный путь для шаблонов: {custom_path_str}")
+            final_path = Path(custom_path_str)
+        else:
+            print(f"Кастомный путь не задан или не найден. Используется путь по умолчанию: {default_path}")
+
         company_names = settings.get("company_names", default_companies)
-        
         return final_path, company_names
 
     except (json.JSONDecodeError, Exception) as e:
@@ -115,24 +123,43 @@ def load_settings() -> tuple[Path, dict]:
         return default_path, default_companies
 
 def ensure_template_structure(base_path: Path):
-    """Проверяет и создает необходимую структуру папок для шаблонов."""
-    print(f"Проверка структуры папок в: {base_path}")
+    """
+    Проверяет и создает необходимую структуру папок для шаблонов.
+    Если запущено из .exe и папки Template нет, копирует ее из бандла.
+    """
+    persistent_template_dir = base_path / "Template"
+    print(f"Проверка структуры папок в: {persistent_template_dir}")
+
+    if not persistent_template_dir.exists():
+        print(f"Папка 'Template' не найдена в {base_path}. Попытка копирования...")
+        
+        # Определяем путь к данным внутри бандла
+        bundle_dir = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).parent
+        source_template_dir = bundle_dir / "Template"
+
+        if source_template_dir.exists():
+            try:
+                shutil.copytree(source_template_dir, persistent_template_dir)
+                print(f"Папка 'Template' успешно скопирована из бандла в {persistent_template_dir}")
+            except Exception as e:
+                print(f"[КРИТИЧЕСКАЯ ОШИБКА] Не удалось скопировать папку 'Template': {e}")
+                messagebox.showerror("Критическая ошибка", f"Не удалось создать папку с шаблонами: {e}")
+                return
+        else:
+            print("[ПРЕДУПРЕЖДЕНИЕ] Исходная папка 'Template' не найдена даже в бандле.")
+
+    # В любом случае, убедимся, что подпапки статусов существуют
     try:
         for status_folder in TEMPLATE_STATUSES.values():
-            (base_path / "Template" / "template_tra" / status_folder).mkdir(parents=True, exist_ok=True)
+            (persistent_template_dir / "template_tra" / status_folder).mkdir(parents=True, exist_ok=True)
         print("Структура папок в порядке.")
     except Exception as e:
-        print(f"[ОШИБКА] Не удалось создать структуру папок: {e}")
+        print(f"[ОШИБКА] Не удалось создать подпапки статусов: {e}")
 
 # --- Основные пути ---
-# Определяем корневую папку для шаблонов и загружаем имена компаний
 TEMPLATES_ROOT, COMPANY_NAMES = load_settings()
 ensure_template_structure(TEMPLATES_ROOT)
 
-
-
-# Пути по умолчанию
-BASE_DIR = Path(__file__).parent
 TEMPLATE_DIR = TEMPLATES_ROOT / "Template" / "template_tra"
 TZ_FILE_PATH = TEMPLATES_ROOT / "Template" / "TZ.xlsx"
 
