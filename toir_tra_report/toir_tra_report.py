@@ -656,6 +656,8 @@ def create_transmittal_gui():
         if folder_path:
             selected_folder.set(folder_path)
             folder_display_label.config(text=f"...{folder_path[-50:]}")
+            # --- Обновление ссылки на папку ---
+            folder_link_label.config(text=f"🔗 {Path(folder_path).name}")
             update_template_options()
 
     def run_processing():
@@ -741,6 +743,33 @@ def create_transmittal_gui():
 
     status_label = ttk.Label(bottom_frame, text="Ожидание...", style="Status.TLabel", anchor="w")
     status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    # --- Ссылка на папку ---
+    folder_link_label = tk.Label(
+        bottom_frame,
+        text="",
+        fg="#00529B",
+        cursor="hand2",
+        bg=STATUS_BAR_COLOR,
+        font=("Segoe UI", 9, "underline")
+    )
+    folder_link_label.pack(side=tk.LEFT, padx=10)
+
+    def open_selected_folder(event=None):
+        folder_path = selected_folder.get()
+        if folder_path and Path(folder_path).is_dir():
+            try:
+                if sys.platform == "win32":
+                    os.startfile(folder_path)
+                elif sys.platform == "darwin":
+                    subprocess.run(['open', folder_path])
+                else:
+                    subprocess.run(['xdg-open', folder_path])
+            except Exception as e:
+                messagebox.showwarning("Ошибка", f"Не удалось открыть папку: {e}")
+
+    folder_link_label.bind("<Button-1>", open_selected_folder)
+
 
     link_label = tk.Label(bottom_frame, text="🔗 GitHub", fg="blue", cursor="hand2", bg=STATUS_BAR_COLOR, font=("Segoe UI", 8, "underline"))
     link_label.pack(side=tk.RIGHT, padx=10)
