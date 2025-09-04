@@ -29,9 +29,9 @@ except ImportError:
 # ============= НАСТРОЙКИ =============
 # Карта статусов и соответствующих им папок
 TEMPLATE_STATUSES = {
-    "izdato na pregled_GST": "izdato_na_pregled_gst",
-    "na uvid_app": "na_uvid_app",
-    "za upotrebu_cmm": "za_upotrebu_cmm",
+    "izdato na pregled_GST  (для отправки Заказчику)": "izdato_na_pregled_gst",
+    "na uvid_app  (для отправки подписанных отчетов Субподрядчику)": "na_uvid_app",
+    "za upotrebu_cmm  (для отправки комментариев Субподрядчику)": "za_upotrebu_cmm",
 }
 DEFAULT_COMPANY_NAMES = {
     "GST": "Gastrans",
