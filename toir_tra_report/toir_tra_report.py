@@ -33,6 +33,40 @@ TEMPLATE_STATUSES = {
     "na uvid_app": "na_uvid_app",
     "za upotrebu_cmm": "za_upotrebu_cmm",
 }
+DEFAULT_COMPANY_NAMES = {
+    "GST": "Gastrans",
+    "CDT": "Comita DTech",
+    "CNE": "Contex",
+    "GGC": "Giprogazcentr",
+    "DGT": "Drager",
+    "DTA": "DTA Process&Safety",
+    "ENL": "Energo Lab",
+    "ENK": "Energointeh Kibernetika",
+    "ERG": "ENREGRO",
+    "IDP": "IvDam",
+    "KBV": "KBV",
+    "KNT": "Kontron",
+    "KSR": "KSR Service",
+    "MRS": "Martin",
+    "MWT": "Milanovic",
+    "MSV": "MOS-AV",
+    "NTK": "Netiks",
+    "OST": "Ostral",
+    "PCM": "CTO ProChrom",
+    "PSI": "Petrolsoft",
+    "PTD": "Premi Trade",
+    "PMG": "PROMONT GROUP",
+    "RIM": "Real Impeks",
+    "SBT": "SBT",
+    "SNX": "SENERMAX",
+    "SIM": "SIEMENS ENERGY",
+    "TTP": "TehnoTerm",
+    "TMG": "TERMOGAMA",
+    "TER": "Termoingenjering",
+    "TSL": "Tesla Ekspo",
+    "VIS": "VIS Company",
+    "VLK": "Vulkan Ingenjering",
+}
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
 
 # --- Функции для работы с настройками ---
@@ -49,11 +83,12 @@ def save_settings(settings_data: dict):
 def load_settings() -> tuple[Path, dict]:
     """Загружает настройки из settings.json или возвращает значения по умолчанию."""
     default_path = Path(__file__).parent
-    default_companies = {}
+    default_companies = DEFAULT_COMPANY_NAMES
     
     if not SETTINGS_FILE.exists():
-        save_settings({"templates_path": "", "company_names": {}})
-        return default_path, default_companies
+        # First run: create settings.json with default company names
+        save_settings({"templates_path": "", "company_names": DEFAULT_COMPANY_NAMES})
+        return default_path, DEFAULT_COMPANY_NAMES
 
     try:
         with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
@@ -580,12 +615,34 @@ def create_transmittal_gui():
             if not found_template:
                 if default_key in templates_map:
                     selected_template_key.set(default_key)
+                # Доп. логика: если не нашли по аббревиатуре и default_key отсутствует,
+                # пытаемся выбрать (XXX) Общий среди доступных шаблонов
+                if not found_template:
+                    xxx_key = None
+                    for k, fname in templates_map.items():
+                        if "-XXX-" in str(fname).upper():
+                            xxx_key = k
+                            break
+                    if xxx_key is None:
+                        for k in templates_map.keys():
+                            if "(XXX)" in str(k).upper():
+                                xxx_key = k
+                                break
+                    if xxx_key:
+                        selected_template_key.set(xxx_key)
         else:
             if default_key in templates_map:
                 selected_template_key.set(default_key)
             else:
                 # Если нет даже папки, выбираем первый в списке
                 selected_template_key.set(sorted_keys[0] if sorted_keys else "")
+        # Дополнительный запасной вариант: выбрать XXX, если по-прежнему ничего не выбрано
+        if not selected_template_key.get():
+            for key, filename in templates_map.items():
+                fn_upper = str(filename).upper()
+                if "-XXX-" in fn_upper or "(XXX)" in str(key).upper():
+                    selected_template_key.set(key)
+                    break
 
     def toggle_delete_option():
         if should_create_archive.get():
@@ -693,6 +750,13 @@ def create_transmittal_gui():
     selected_status_key.trace_add("write", update_template_options)
     toggle_delete_option()
     update_template_options()
+    # Fallback: если аббревиатура не найдена — выбрать XXX
+    if not selected_template_key.get():
+        for key, filename in templates_map.items():
+            fn_upper = str(filename).upper()
+            if "-XXX-" in fn_upper or "(XXX)" in str(key).upper():
+                selected_template_key.set(key)
+                break
 
     root.mainloop()
 

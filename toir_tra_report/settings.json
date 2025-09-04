@@ -4,6 +4,7 @@
     "GST": "Gastrans",
     "CDT": "Comita DTech",
     "CNE": "Contex",
+    "GGC": "Giprogazcentr",
     "DGT": "Drager",
     "DTA": "DTA Process&Safety",
     "ENL": "Energo Lab",
@@ -18,6 +19,7 @@
     "MSV": "MOS-AV",
     "NTK": "Netiks",
     "OST": "Ostral",
+    "PCM": "CTO ProChrom",
     "PSI": "Petrolsoft",
     "PTD": "Premi Trade",
     "PMG": "PROMONT GROUP",
@@ -27,9 +29,9 @@
     "SIM": "SIEMENS ENERGY",
     "TTP": "TehnoTerm",
     "TMG": "TERMOGAMA",
-    "TER": "Termoinženjering",
+    "TER": "Termoingenjering",
     "TSL": "Tesla Ekspo",
     "VIS": "VIS Company",
-    "VLK": "Vulkan Inženjering"
+    "VLK": "Vulkan Ingenjering"
   }
 }
