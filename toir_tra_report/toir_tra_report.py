@@ -161,7 +161,7 @@ TEMPLATES_ROOT, COMPANY_NAMES = load_settings()
 ensure_template_structure(TEMPLATES_ROOT)
 
 TEMPLATE_DIR = TEMPLATES_ROOT / "Template" / "template_tra"
-TZ_FILE_PATH = TEMPLATES_ROOT / "Template" / "TZ.xlsx"
+TZ_FILE_PATH = TEMPLATES_ROOT / "Template" / "TZ_glob.xlsx"
 
 # --- Настройки ячеек и колонок (можно вынести в конфиг) ---
 DATE_CELL_ADDR = "C3"
@@ -173,7 +173,7 @@ COL_BD = 3
 COL_NZ = 9
 MERGE_BD_FROM, MERGE_BD_TO = 3, 8
 MERGE_NZ_FROM, MERGE_NZ_TO = 9, 12
-ALLOWED_EXT = { ".pdf", ".docx", ".xlsx", ".xls", ".dwg"}
+ALLOWED_EXT = { ".pdf", ".docx", ".xlsx", ".xls", ".dwg", ".zip", ".7z"}
 
 # --- Регулярные выражения ---
 RE_INDEX = re.compile(
@@ -628,7 +628,7 @@ def create_transmittal_gui():
             found_template = False
             # Сортируем по длине, чтобы сначала проверять более длинные и специфичные аббревиатуры
             for abbr in sorted(available_abbrs, key=len, reverse=True):
-                if f"_{abbr}" in folder_name_upper or f"-{abbr}" in folder_name_upper:
+                if f"_{abbr}" in folder_name_upper or f"-{abbr}" in folder_name_upper or re.search(rf'\b{abbr}\b', folder_name_upper):
                     # Нашли аббревиатуру, теперь найдем ключ шаблона (его отображаемое имя), которому она принадлежит
                     for key, filename in templates_map.items():
                         if f"-{abbr}-" in filename.upper():
