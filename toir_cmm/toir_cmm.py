@@ -7,10 +7,10 @@ import tkinter as tk
 from tkinter import filedialog
 
 # === НАСТРОЙКИ ===
-TEMPLATE_PATH = Path("Template/CommentSheet_Template.xltx")
+TEMPLATE_PATH = Path("toir_cmm/Template/CommentSheet_Template.xltx")
 DATE_FMT = "dd.mm.yyyy"
 # Путь к файлу с данными для поиска
-TZ_FILE_PATH = Path("Template/TZ.xlsx")
+TZ_FILE_PATH = Path("toir_cmm/Template/TZ.xlsx")
 
 # Регулярка на извлечение полезных фрагментов из имени (пример)
 RE_SECTION = re.compile(r"(GMS\d+)", re.IGNORECASE)
