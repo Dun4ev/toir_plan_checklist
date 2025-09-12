@@ -1,58 +1,106 @@
 import re
 from pathlib import Path
 from datetime import datetime
+import sys
 from openpyxl import load_workbook
 from openpyxl.workbook.defined_name import DefinedName
 import tkinter as tk
 from tkinter import filedialog
 
 # === НАСТРОЙКИ ===
-TEMPLATE_PATH = Path("toir_cmm/Template/CommentSheet_Template.xltx")
+# --- Определение путей для .exe и обычного режима ---
+def get_base_path() -> Path:
+    """Возвращает базовый путь для ресурсов, работающий и для .exe."""
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        return Path(sys.executable).parent
+    else:
+        return Path(__file__).parent
+
+BASE_DIR = get_base_path()
+TEMPLATE_PATH = BASE_DIR / "Template/CommentSheet_Template.xltx"
+TZ_FILE_PATH = BASE_DIR / "Template/TZ_glob.xlsx"
 DATE_FMT = "dd.mm.yyyy"
-# Путь к файлу с данными для поиска
-TZ_FILE_PATH = Path("toir_cmm/Template/TZ.xlsx")
 
-# Регулярка на извлечение полезных фрагментов из имени (пример)
-RE_SECTION = re.compile(r"(GMS\d+)", re.IGNORECASE)
-RE_I_CODE  = re.compile(r"\b((?:[IVXLCDM]+)\.(?:\d+)(?:\.\d+)?(?:\.\d+)?(?:[A-Za-zА-Яа-я])?)\b", re.IGNORECASE)
+# --- Регулярные выражения (из toir_tra_report_v1.py) ---
+RE_INDEX = re.compile(
+    r"\b([IVXLCDM]+)\.(\d+)(?:\.(\d+))?(?:\.(\d+))?([A-Za-zА-Яа-я])?\b",
+    re.IGNORECASE
+)
 
-def find_description_in_tz_file(lookup_key: str) -> str | None:
+# --- НОВЫЕ ФУНКЦИИ (из toir_tra_report_v1.py) ---
+
+def normalize_key(key: str) -> str:
+    """Нормализует ключ для поиска в словаре."""
+    key = key.upper()
+    replacements = {'A': 'А', 'B': 'Б', 'V': 'В', 'G': 'Г'}
+    for lat, cyr in replacements.items():
+        key = key.replace(lat, cyr)
+    return key
+
+def extract_index_from_name(filename: str) -> str | None:
+    """Извлекает структурированный индекс из имени файла."""
+    m = RE_INDEX.search(filename)
+    if not m: return None
+    roman, num1, num2, num3, suf = m.groups()
+    suf = suf or ""
+    idx = f"{roman.upper()}.{num1}"
+    if num2: idx += f".{num2}"
+    if num3: idx += f".{num3}"
+    idx += suf
+    return idx
+
+def build_tz_map_from_xlsx(xlsx_path: Path) -> dict[str, str]:
     """
-    Ищет ключ в колонке B файла TZ.xlsx и возвращает
-    соответствующее значение из колонки C.
-    Поддерживает транслитерацию для кириллических букв в конце ключа.
+    Строит карту {индекс: описание} по всем листам указанного XLSX файла.
+    Логика полностью взята из toir_tra_report_v1.py.
     """
-    if not TZ_FILE_PATH.exists():
-        print(f"  - [ERROR] Файл с данными не найден: {TZ_FILE_PATH}")
-        return None
-
-    # Карта для транслитерации
-    translit_map = {'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г'}
+    tz_map: dict[str, str] = {}
+    if not xlsx_path.exists():
+        print(f"  - [WARNING] Файл с данными не найден: {xlsx_path}")
+        return tz_map
     
-    # Создаем список ключей для поиска
-    keys_to_find = {lookup_key.strip()}
-    
-    # Проверяем, заканчивается ли ключ на одну из латинских букв
-    if lookup_key and lookup_key[-1] in translit_map:
-        # Создаем альтернативный ключ с кириллической буквой
-        cyrillic_key = lookup_key[:-1] + translit_map[lookup_key[-1]]
-        keys_to_find.add(cyrillic_key)
-        print(f"  - [INFO] Обнаружен возможный транслит. Ищем ключи: {keys_to_find}")
-
+    print(f"  - [INFO] Чтение карты индексов из: {xlsx_path.name}")
     try:
-        wb = load_workbook(TZ_FILE_PATH, data_only=True)
-        ws = wb['gen_cl'] 
-        
-        # Ищем точное совпадение в колонке B по любому из ключей
-        for row in ws.iter_rows(values_only=True):
-            cell_value = str(row[1]).strip() if row[1] else ""
-            if cell_value in keys_to_find:
-                return row[2] # Возвращаем описание из колонки C
-        
-        return None # Если ничего не найдено
+        wb = load_workbook(xlsx_path, data_only=True)
+        for ws in wb.worksheets:
+            max_col = min(ws.max_column, 20)
+            for r in range(1, ws.max_row + 1):
+                idx_val, idx_col = None, None
+                for c in range(1, max_col + 1):
+                    v = ws.cell(r, c).value
+                    if isinstance(v, str):
+                        m = RE_INDEX.search(v)
+                        if m:
+                            roman, num1, num2, num3, suf = m.groups()
+                            suf = suf or ""
+                            idx_val = f"{roman.upper()}.{num1}"
+                            if num2: idx_val += f".{num2}"
+                            if num3: idx_val += f".{num3}"
+                            idx_val += suf
+                            idx_col = c
+                            break
+                if not idx_val: continue
+                naziv = None
+                vC = ws.cell(r, 3).value
+                if isinstance(vC, str) and vC.strip():
+                    naziv = vC.strip()
+                else:
+                    for c in range((idx_col or 1) + 1, max_col + 1):
+                        v = ws.cell(r, c).value
+                        if isinstance(v, str) and len(v.strip()) >= 3:
+                            naziv = v.strip()
+                            break
+                if naziv:
+                    normalized_key = normalize_key(idx_val)
+                    if normalized_key not in tz_map:
+                        tz_map[normalized_key] = naziv
+        print(f"  - [INFO] Карта индексов успешно построена. Найдено {len(tz_map)} записей.")
+        return tz_map
     except Exception as e:
-        print(f"  - [ERROR] Ошибка при чтении файла {TZ_FILE_PATH}: {e}")
-        return None
+        print(f"  - [ERROR] Ошибка при чтении файла {xlsx_path}: {e}")
+        return tz_map
+
+# --- СУЩЕСТВУЮЩИЕ ФУНКЦИИ (с изменениями) ---
 
 def ensure_named_range(ws, wb, cell, name):
     """Создаёт именованный диапазон, если ещё не существует."""
@@ -89,25 +137,25 @@ def fill_basic_fields(wb, report_name: str):
         ws["D4"].number_format = DATE_FMT
         ensure_named_range(ws, wb, ws["D4"], "CreatedDate")
 
-def fill_extra_fields(wb, report_name: str):
+def fill_extra_fields(wb, report_name: str, tz_map: dict):
     """
-    Извлечь код из имени файла, найти его в TZ.xlsx и записать
-    соответствующее описание из колонки C в ячейку ExtraField1 (D6).
+    Извлечь код из имени файла, найти его в карте описаний (tz_map)
+    и записать результат в ячейку ExtraField1 (D6).
     """
     ws = wb.active
-    icode_match = RE_I_CODE.search(report_name)
+    icode = extract_index_from_name(report_name)
 
     extra_value = "Код не найден в имени файла"
-    if icode_match:
-        icode = icode_match.group(1)
+    if icode:
         print(f"  Найден код в имени файла: {icode}")
-        description = find_description_in_tz_file(icode)
+        normalized_icode = normalize_key(icode)
+        description = tz_map.get(normalized_icode)
         
         if description:
-            print(f"  Найдено описание в TZ.xlsx: \"{description}\"")
+            print(f"  Найдено описание в карте: \"{description}\"")
             extra_value = description
         else:
-            print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Код '{icode}' не найден в файле {TZ_FILE_PATH}")
+            print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Код '{icode}' не найден в карте описаний.")
             extra_value = f"ОПИСАНИЕ ДЛЯ {icode} НЕ НАЙДЕНО"
     else:
         print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Код раздела не найден в имени файла: {report_name}")
@@ -119,10 +167,9 @@ def fill_extra_fields(wb, report_name: str):
             ws_target = wb[sheet] if isinstance(sheet, str) else sheet
             ws_target[coord].value = extra_value
     else:
-        # Предполагаем, что плейсхолдер находится в D6, как в оригинальном комментарии
         ws["D6"].value = extra_value
 
-def make_cmm_for_report(report_path: Path):
+def make_cmm_for_report(report_path: Path, tz_map: dict):
     """Создает CMM файл для одного отчета."""
     stem = report_path.stem
     cmm_name = f"{stem}_CMM.xlsx"
@@ -137,7 +184,7 @@ def make_cmm_for_report(report_path: Path):
         wb = load_workbook(TEMPLATE_PATH)
         wb.template = False
         fill_basic_fields(wb, stem)
-        fill_extra_fields(wb, stem)
+        fill_extra_fields(wb, stem, tz_map)
         wb.save(cmm_path)
         print(f"[OK] Создан файл: {cmm_path.name}")
     except Exception as e:
@@ -145,26 +192,25 @@ def make_cmm_for_report(report_path: Path):
 
 def main():
     """Главная функция для пакетной обработки."""
-    # Создаем корневое окно Tkinter, которое нам не нужно показывать
     root = tk.Tk()
     root.withdraw()
 
-    # Открываем диалог выбора папки
     print("Пожалуйста, выберите папку с файлами отчетов (.docx, .pdf)...")
     search_dir = filedialog.askdirectory(
         title="Выберите папку с файлами отчетов (.docx, .pdf)"
     )
 
-    # Если пользователь закрыл диалог, выходим
     if not search_dir:
         print("Папка не выбрана. Завершение работы.")
         return
         
     search_path = Path(search_dir)
 
+    # Строим карту ОДИН РАЗ перед началом обработки
+    tz_map = build_tz_map_from_xlsx(TZ_FILE_PATH)
+
     print(f"Запуск пакетной обработки в директории: {search_path.resolve()}")
     
-    # Ищем файлы .docx и .pdf
     docx_files = list(search_path.glob("**/*.docx"))
     pdf_files = list(search_path.glob("**/*.pdf"))
     files_to_process = docx_files + pdf_files
@@ -176,7 +222,7 @@ def main():
     processed_files = 0
     for doc_file in files_to_process:
         if doc_file.name.startswith("CT-DR-"):
-            make_cmm_for_report(doc_file)
+            make_cmm_for_report(doc_file, tz_map)
             processed_files += 1
             
     print(f"Обработка завершена. Всего найдено файлов (.docx, .pdf): {len(files_to_process)}. Обработано (с префиксом CT-DR-): {processed_files}.")
